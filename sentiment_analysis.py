@@ -5,9 +5,7 @@ import os
 import re
 import string
 
-INC_PUNC = string.punctuation.replace("-", "")
-INC_PUNC = INC_PUNC.replace("'", "")
-GENERIC_PUNC = re.compile(r"[{}]".format(INC_PUNC))
+GENERIC_PUNC = re.compile(r"(\w*)([{}])(\w*)".format(string.punctuation))
 
 def get_review_dir():
     parser = argparse.ArgumentParser()
@@ -15,12 +13,25 @@ def get_review_dir():
     args = parser.parse_args()
     return args.path
 
-def space_punctuation(line):
-    line = re.sub(GENERIC_PUNC, " {} ".format(GENERIC_PUNC), line) 
-    return line
+def space_punctuation(word):
+    #line = re.sub(GENERIC_PUNC, " ", line)
+    matches = []
+    m = re.findall(GENERIC_PUNC, word)
+    for match in m:
+        if "'" in match:
+            match = adjust_apostrophe(match)
+        for seg in match:
+            if seg:
+                matches.append(seg)
+    if not matches:
+        matches = [word]
+    return matches
     
-def insert_apost_space(line):
-    pass
+def adjust_apostrophe(match_tuple):
+    if match_tuple[2] == 't':
+        return tuple([match_tuple[0][:-1], "n't"])
+    else:
+        return match_tuple
     
 def walk_dir(review_dir):
     review_list = []
@@ -40,10 +51,11 @@ def tokenize(review, sentiment_freqs):
     split_review = []
     with open(review, 'r') as f:
         for line in f:
-            line = space_punctuation(line)
-            for seg in line.split():
-                split_review.append(seg)
-                sentiment_freqs[seg] += 1
+            for word in line.split():
+                split_word = space_punctuation(word)
+                split_review.extend(split_word)
+                for seg in split_word:
+                    sentiment_freqs[seg] += 1
     return split_review
     
 if __name__ == '__main__':
@@ -56,7 +68,7 @@ if __name__ == '__main__':
         split_reviews.append(tokenize(review, pos_freqs))
     for review in neg_reviews:
         split_reviews.append(tokenize(review, neg_freqs))
+    top = 100
+    print "Pos words: {}".format(sorted(pos_freqs, reverse=True, key=lambda x: pos_freqs[x])[:top])
+    print "Neg words: {}".format(sorted(neg_freqs, reverse=True, key=lambda x: neg_freqs[x])[:top])
 
-    print "Pos words: {}".format(sorted(pos_freqs.items(), key=pos_freqs.__getitem__))
-    print "Neg words: {}".format(sorted(neg_freqs.items(), key=pos_freqs.__getitem__))
-    

@@ -1,8 +1,5 @@
 Tokenizer
 =========
 
-- Matches punctuation except dash and apostrophe
-- Punctuation needs to be whitespace separated
-- Apostrophes need to be whitespace separated with the rest of the word, except n't which needs to be treated differently
-- Need to decide what to do about dashes
-- Need to decide what to do about casing
+- All punctuation is whitespace separated.
+- Only adjustment is for contracted negations - e.g. "isn't" -> "is" "n't"
