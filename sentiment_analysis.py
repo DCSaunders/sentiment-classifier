@@ -2,6 +2,12 @@
 import argparse
 import collections
 import os
+import re
+import string
+
+INC_PUNC = string.punctuation.replace("-", "")
+INC_PUNC = INC_PUNC.replace("'", "")
+GENERIC_PUNC = re.compile(r"[{}]".format(INC_PUNC))
 
 def get_review_dir():
     parser = argparse.ArgumentParser()
@@ -9,6 +15,13 @@ def get_review_dir():
     args = parser.parse_args()
     return args.path
 
+def space_punctuation(line):
+    line = re.sub(GENERIC_PUNC, " {} ".format(GENERIC_PUNC), line) 
+    return line
+    
+def insert_apost_space(line):
+    pass
+    
 def walk_dir(review_dir):
     review_list = []
     for dirpath, dirnames, filenames in os.walk(review_dir):
@@ -27,15 +40,10 @@ def tokenize(review, sentiment_freqs):
     split_review = []
     with open(review, 'r') as f:
         for line in f:
-            for word in line.split():
-                # TODO: want to maintain apostrophes, not get rid of them
-                split_word = word.split("'")
-                if (len(split_word) > 1):
-                    if word[-3:] == "n't":
-                        split_word = [word[:-3], word[-3:]]
-                for seg in split_word:
-                    split_review.append(seg)
-                    sentiment_freqs[seg] += 1
+            line = space_punctuation(line)
+            for seg in line.split():
+                split_review.append(seg)
+                sentiment_freqs[seg] += 1
     return split_review
     
 if __name__ == '__main__':
@@ -49,6 +57,6 @@ if __name__ == '__main__':
     for review in neg_reviews:
         split_reviews.append(tokenize(review, neg_freqs))
 
-    print "Pos words: {}".format(pos_freqs)
-    print "Neg words: {}".format(neg_freqs)
+    print "Pos words: {}".format(sorted(pos_freqs.items(), key=pos_freqs.__getitem__))
+    print "Neg words: {}".format(sorted(neg_freqs.items(), key=pos_freqs.__getitem__))
     
