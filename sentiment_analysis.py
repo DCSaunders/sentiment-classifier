@@ -5,7 +5,7 @@ import os
 import re
 import string
 
-GENERIC_PUNC = re.compile(r"(\w*)([{}])(\w*)".format(string.punctuation))
+GENERIC_PUNC = re.compile(r"(\w*)([{}])(\w*)".format(string.punctuation.replace('-','')))
 
 def get_review_dir():
     parser = argparse.ArgumentParser()
@@ -31,7 +31,7 @@ def adjust_apostrophe(match_tuple):
     if match_tuple[2] == 't':
         return tuple([match_tuple[0][:-1], "n't"])
     else:
-        return match_tuple
+        return tuple([match_tuple[0], "'{}".format(match_tuple[2])])
     
 def walk_dir(review_dir):
     review_list = []
