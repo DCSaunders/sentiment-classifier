@@ -7,14 +7,15 @@ import string
 
 GENERIC_PUNC = re.compile(r"(\w*)([{}])(\w*)".format(string.punctuation.replace('-','')))
 
-def get_review_dir():
+def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--path', help='path to dir with POS and NEG review subdirs', default='data')
+    parser.add_argument('-l', '--lexicon', help='path to sentiment lexicon', default='resources/sent_lexicon')
+    parser.add_argument('-w', '--weighted', action='store_true', help='flag to use magnitude weights from sentiment lexicon')
     args = parser.parse_args()
-    return args.path
+    return args
 
 def space_punctuation(word):
-    #line = re.sub(GENERIC_PUNC, " ", line)
     matches = []
     m = re.findall(GENERIC_PUNC, word)
     for match in m:
@@ -57,10 +58,36 @@ def tokenize(review, sentiment_freqs):
                 for seg in split_word:
                     sentiment_freqs[seg] += 1
     return split_review
-    
+
+def get_sentiments(lex_path, weighted):
+    '''
+    Args: 
+    lex_path: string path to sentiment lexicon
+    weighted: boolean, true if extracting sentiment magnitude as well as sign
+    Returns:
+    dictionary mapping word to sign, optionally weighted by estimated magnitude
+    '''
+    sent_lexicon = {}
+    with open(lex_path, 'r') as f:
+        for line in f:
+            entries = [value.split('=') for value in line.split()]
+            entry = {value[0]: value[1] for value in entries}
+            sign_text = entry['priorpolarity']
+            if sign_text == 'positive':
+                sign = 1
+            elif sign_text == 'neutral':
+                sign = 0
+            else:
+                sign = -1
+            weight = 1 if entry['type'] == 'strongsubj' else 0.5
+            score = sign * weight if weighted else sign
+            sent_lexicon[entry['word1']] = score
+    return sent_lexicon
+            
 if __name__ == '__main__':
-    review_dir = get_review_dir()
-    pos_reviews, neg_reviews = get_review_files(review_dir)
+    args = get_args()
+    sent_lexicon = get_sentiments(args.lexicon, args.weighted)
+    pos_reviews, neg_reviews = get_review_files(args.path)
     pos_freqs = collections.defaultdict(int)
     neg_freqs = collections.defaultdict(int)
     split_reviews = []

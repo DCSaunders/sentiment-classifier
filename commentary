@@ -3,3 +3,10 @@ Tokenizer
 
 - All punctuation is whitespace separated.
 - Only adjustment is for contracted negations - e.g. "isn't" -> "is" "n't"
+- TODO: stopwords
+- later: negation token, deal with casing
+
+Sentiment lexicon
+=================
+
+- Weighting: strongsubj 1, weaksubj 0.5
