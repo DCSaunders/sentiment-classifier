@@ -1,12 +1,12 @@
 #!/usr/bin/env python
+from __future__ import division
 import argparse
 import collections
 import os
 import re
 import string
 
-STOPWORDS = set([',', '.', 'the', 'a', 'of', 'to', 'and', 'is', '"', 'in', "'s", 'that', 'it', ')',
-                 '(', 'with', 'I', 'as', 'for', 'film' 'this', 'his', 'film'])
+STOPWORDS = set([',', '.', 'the', 'a', 'of', 'to', 'and', 'is', '"', 'in', "'s", 'that', 'it', ')', '(', 'with', 'I', 'as', 'for', 'film' 'this', 'his', 'her', 'their', 'they', 'film'])
 
 GENERIC_PUNC = re.compile(r"(\w*)([{}])(\w*)".format(string.punctuation.replace('-','')))
 POS = 'POS'
@@ -16,13 +16,18 @@ class Review(object):
     def __init__(self, rating):
         self.rating = rating
         self.text = []
+        self.score = 0
 
     def lexicon_score(self, lexicon):
         score = 0
         for token in self.text:
             if token in lexicon:
                 score += lexicon[token]
-        return score
+        self.score = score
+        if (self.rating * self.score > 0):
+            return 1
+        else:
+            return 0
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -61,8 +66,9 @@ def walk_dir(review_dir):
 def get_review_files(review_dir, review_type, path_review_dict):
     search_dir = os.path.join(review_dir, review_type)
     review_paths = walk_dir(search_dir)
+    rating = 1 if review_type == POS else -1
     for path in review_paths:
-        path_review_dict[path] = Review(rating=review_type)
+        path_review_dict[path] = Review(rating)
 
 def tokenize(review_path, path_review_dict, sent_freqs):
     split_review = []
@@ -101,6 +107,9 @@ def get_sentiments(lex_path, weighted):
             sent_lexicon[entry['word1']] = score
     return sent_lexicon
 
+def sign_test(pos_count, neg_count):
+    
+
 if __name__ == '__main__':
     args = get_args()
     sent_lexicon = get_sentiments(args.lexicon, args.weighted)
@@ -109,12 +118,15 @@ if __name__ == '__main__':
     get_review_files(args.path, NEG, path_review_dict)
     pos_freqs = collections.defaultdict(int)
     neg_freqs = collections.defaultdict(int)
+    correct_pos = correct_neg = 0
     for review_path, review in path_review_dict.items():
-        if review.rating == POS:
+        if review.rating == 1:
             tokenize(review_path, path_review_dict, pos_freqs)
+            correct_pos += review.lexicon_score(sent_lexicon)
         else:
             tokenize(review_path, path_review_dict, neg_freqs)
-        print review.rating, review.lexicon_score(sent_lexicon)
+            correct_neg += review.lexicon_score(sent_lexicon)
+    print correct_count, correct_count / len(path_review_dict)
     top = 100
-    print "Pos words: {}".format(sorted(pos_freqs, reverse=True, key=lambda x: pos_freqs[x])[:top])
-    print "Neg words: {}".format(sorted(neg_freqs, reverse=True, key=lambda x: neg_freqs[x])[:top])
+    #print "Pos words: {}".format(sorted(pos_freqs, reverse=True, key=lambda x: pos_freqs[x])[:top])
+    #print "Neg words: {}".format(sorted(neg_freqs, reverse=True, key=lambda x: neg_freqs[x])[:top])
