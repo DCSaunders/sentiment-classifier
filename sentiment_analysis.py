@@ -5,6 +5,8 @@ import collections
 import os
 import re
 import string
+from numpy import log
+from scipy.stats import binom_test
 
 STOPWORDS = set([',', '.', 'the', 'a', 'of', 'to', 'and', 'is', '"', 'in', "'s", 'that', 'it', ')', '(', 'with', 'I', 'as', 'for', 'film' 'this', 'his', 'her', 'their', 'they', 'film'])
 
@@ -13,27 +15,46 @@ POS = 'POS'
 NEG = 'NEG'
 
 class Review(object):
-    def __init__(self, rating):
+    def __init__(self, rating, path):
         self.rating = rating
+        self.path = path
         self.text = []
-        self.score = 0
+        self.bag_words = {}
 
     def lexicon_score(self, lexicon):
         score = 0
         for token in self.text:
             if token in lexicon:
                 score += lexicon[token]
-        self.score = score
-        if (self.rating * self.score > 0):
+        if (self.rating * score > 0):
             return 1
         else:
             return 0
+        
+    def test_tokenize(self):
+        split_review = []
+        with open(self.path, 'r') as f:
+            for line in f:
+                for word in line.split():
+                    split_word = space_punctuation(word)
+                    split_review.extend(split_word)
+        self.text = split_review
+
+    def train_tokenize(self, sent_freqs):
+        split_review = []
+        with open(self.path, 'r') as f:
+            for line in f:
+                for word in line.split():
+                    split_word = space_punctuation(word)
+                    split_review.extend(split_word)
+                    for seg in split_word:
+                        sent_freqs[seg] += 1
+        self.text = split_review
 
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--path', help='path to dir with POS and NEG review subdirs', default='data')
     parser.add_argument('-l', '--lexicon', help='path to sentiment lexicon', default='resources/sent_lexicon')
-    parser.add_argument('-w', '--weighted', action='store_true', help='flag to use magnitude weights from sentiment lexicon')
     args = parser.parse_args()
     return args
 
@@ -63,34 +84,21 @@ def walk_dir(review_dir):
             review_list.append(os.path.join(dirpath, filename))
     return review_list
 
-def get_review_files(review_dir, review_type, path_review_dict):
+def get_review_files(review_dir, review_type, reviews):
     search_dir = os.path.join(review_dir, review_type)
     review_paths = walk_dir(search_dir)
     rating = 1 if review_type == POS else -1
     for path in review_paths:
-        path_review_dict[path] = Review(rating)
+        reviews.append(Review(rating, path))
 
-def tokenize(review_path, path_review_dict, sent_freqs):
-    split_review = []
-    with open(review_path, 'r') as f:
-        for line in f:
-            for word in line.split():
-                split_word = space_punctuation(word)
-                split_review.extend(split_word)
-                for seg in split_word:
-                    if seg not in STOPWORDS:
-                        sent_freqs[seg] += 1
-    path_review_dict[review_path].text = split_review
-
-def get_sentiments(lex_path, weighted):
+def get_sentiments(lex_path):
     '''
     Args:
     lex_path: string path to sentiment lexicon
-    weighted: boolean, true if extracting sentiment magnitude as well as sign
     Returns:
-    dictionary mapping word to sign, optionally weighted by estimated magnitude
+    dictionaries mapping word to sign, one weighted, one unweighted
     '''
-    sent_lexicon = {}
+    unweight_lex, weight_lex = {}, {}
     with open(lex_path, 'r') as f:
         for line in f:
             entries = [value.split('=') for value in line.split()]
@@ -103,30 +111,84 @@ def get_sentiments(lex_path, weighted):
             else:
                 sign = -1
             weight = 1 if entry['type'] == 'strongsubj' else 0.5
-            score = sign * weight if weighted else sign
-            sent_lexicon[entry['word1']] = score
-    return sent_lexicon
+            weight_lex[entry['word1']] = sign * weight
+            unweight_lex[entry['word1']] = sign
+    return unweight_lex, weight_lex
 
-def sign_test(pos_count, neg_count):
+def sign_test(test1_results, test2_results):
+    test1_count = test2_count = 0
+    for obs in test1_results:
+        if obs in test2_results:
+            if test1_results[obs] == test2_results[obs]:
+                # Add half to each for ties
+                test1_count += 0.5
+                test2_count += 0.5
+            elif test1_results[obs] > test2_results[obs]:
+                test1_count += 1
+            elif test1_results[obs] < test2_results[obs]:
+                test2_count += 1
+    print two_sided_binomial(round(test1_count), round(test2_count))
+
+def two_sided_binomial(test1, test2):
+    return binom_test((test1, test2), p=0.5, alternative='two-sided')
+        
+def naive_bayes(review, pos_freqs, neg_freqs, results):
+    # Assume equal class priors: P(neg) = P(pos) = 0.5
+    neg_prob = pos_prob = 0.0
+    total_pos = sum(pos_freqs.values())
+    total_neg = sum(neg_freqs.values())
+    for word in review.text:
+        if pos_freqs[word] > 0 and neg_freqs[word] > 0:
+            pos_prob += log(pos_freqs[word] / total_pos)
+            neg_prob += log(neg_freqs[word] / total_neg)
+    if (pos_prob - neg_prob) * review.rating > 0.0:
+        results['n_bayes'][review] = 1
+    else:
+        results['n_bayes'][review] = 0
     
 
-if __name__ == '__main__':
-    args = get_args()
-    sent_lexicon = get_sentiments(args.lexicon, args.weighted)
-    path_review_dict = dict()
-    get_review_files(args.path, POS, path_review_dict)
-    get_review_files(args.path, NEG, path_review_dict)
+def train(train_reviews, results):
     pos_freqs = collections.defaultdict(int)
     neg_freqs = collections.defaultdict(int)
-    correct_pos = correct_neg = 0
-    for review_path, review in path_review_dict.items():
+    for review in train_reviews:
         if review.rating == 1:
-            tokenize(review_path, path_review_dict, pos_freqs)
-            correct_pos += review.lexicon_score(sent_lexicon)
+            review.train_tokenize(pos_freqs)
         else:
-            tokenize(review_path, path_review_dict, neg_freqs)
-            correct_neg += review.lexicon_score(sent_lexicon)
-    print correct_count, correct_count / len(path_review_dict)
-    top = 100
-    #print "Pos words: {}".format(sorted(pos_freqs, reverse=True, key=lambda x: pos_freqs[x])[:top])
-    #print "Neg words: {}".format(sorted(neg_freqs, reverse=True, key=lambda x: neg_freqs[x])[:top])
+            review.train_tokenize(neg_freqs)
+        results['uw_lex'][review] = review.lexicon_score(unweight_lex)
+        results['w_lex'][review] = review.lexicon_score(weight_lex)
+    return pos_freqs, neg_freqs
+
+def split_train_test(reviews, low, high):
+    train, test = [], []
+    for review in reviews:
+        num = int(os.path.basename(review.path)[2:5])
+        if (num >= low) and (num < high):
+            train.append(review)
+        else:
+            test.append(review)
+    return train, test
+
+def test(tests, pos_freqs, neg_freqs, unweight_lex, weight_lex, results):
+    for review in tests:
+        review.test_tokenize()
+        naive_bayes(review, pos_freqs, neg_freqs, results)
+        results['uw_lex'][review] = review.lexicon_score(unweight_lex)
+        results['w_lex'][review] = review.lexicon_score(weight_lex)
+    
+if __name__ == '__main__':
+    args = get_args()
+    unweight_lex, weight_lex = get_sentiments(args.lexicon)
+    reviews = []
+    get_review_files(args.path, POS, reviews)
+    get_review_files(args.path, NEG, reviews)
+    results = {'w_lex': {}, 'uw_lex': {},
+               'n_bayes': {}, 'n_bayes_smooth': {}}
+    train_reviews, test_reviews = split_train_test(reviews, low=0, high=900)
+    pos_freqs, neg_freqs = train(train_reviews, results)
+    test(test_reviews, pos_freqs, neg_freqs, unweight_lex, weight_lex, results)
+    print sum(results['w_lex'].values()) / len(reviews) 
+    print sum(results['uw_lex'].values()) / len(reviews)
+    print sum(results['n_bayes'].values()) / len(test_reviews) 
+    sign_test(results['w_lex'], results['uw_lex'])
+    sign_test(results['n_bayes'], results['w_lex'])
