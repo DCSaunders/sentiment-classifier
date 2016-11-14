@@ -18,8 +18,6 @@ class Freqs(object):
     def __init__(self):
         self.pos = collections.defaultdict(int)
         self.neg = collections.defaultdict(int)
-        self.pos_casing = collections.defaultdict(int)
-        self.neg_casing = collections.defaultdict(int)
         self.pos_stopwords = 0
         self.neg_stopwords = 0
         
@@ -49,15 +47,13 @@ class Review(object):
                     split_review.extend(split_word)
         self.text = split_review
 
-    def train_tokenize(self, sent_freqs, casing_freqs):
+    def train_tokenize(self, sent_freqs):
         split_review = []
         stopword_count = 0
         with open(self.path, 'r') as f:
             for line in f:
                 for index, word in enumerate(line.split()):
                     split_word = space_punctuation(word)
-                    if index == 0:
-                        casing_freqs[split_word[0]] += 1
                     split_review.extend(split_word)
                     for seg in split_word:
                         sent_freqs[seg] += 1
@@ -190,27 +186,12 @@ def train(train_reviews, results):
     freqs = Freqs()
     for review in train_reviews:
         if review.rating == 1:
-            freqs.pos_stopwords += review.train_tokenize(freqs.pos,
-                                                         freqs.pos_casing)
+            freqs.pos_stopwords += review.train_tokenize(freqs.pos)
         else:
-            freqs.neg_stopwords += review.train_tokenize(freqs.neg,
-                                                         freqs.neg_casing)
+            freqs.neg_stopwords += review.train_tokenize(freqs.neg)
         results['uw_lex'][review] = review.lexicon_score(unweight_lex)
         results['w_lex'][review] = review.lexicon_score(weight_lex)
-    adjust_casing(freqs.pos, pos_casing)
-    adjust_casing(freqs.neg, neg_casing)
     return freqs
-
-def adjust_casing(freqs, casing):
-    ''' casing contains frequency counts for first token in each sentence
-    If any word only appears with a given casing when it is the first
-    word of a sentence, its frequency counts should be adjusted
-    '''
-    for token in casing:
-        if casing[token] == freqs[token] + freqs[token.lower()]:
-            freqs[token.lower()] += freqs.pop(token)
-        else:
-            casing.pop(token)
 
 def split_train_test(reviews, low, high):
     train, test = [], []
@@ -240,7 +221,7 @@ if __name__ == '__main__':
     get_review_files(args.path, NEG, reviews)
     results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
                'bayes_smooth': {}, 'bayes_smooth_stopwords': {}}
-    train_reviews, test_reviews = split_train_test(reviews, low=0, high=800)
+    train_reviews, test_reviews = split_train_test(reviews, low=0, high=900)
     freqs = train(train_reviews, results)
     test(test_reviews, freqs, unweight_lex, weight_lex, results)
     for result in results:
