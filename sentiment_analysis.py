@@ -18,6 +18,8 @@ class Freqs(object):
     def __init__(self):
         self.pos = collections.defaultdict(int)
         self.neg = collections.defaultdict(int)
+        self.pos_casing = collections.defaultdict(int)
+        self.neg_casing = collections.defaultdict(int)
         self.pos_stopwords = 0
         self.neg_stopwords = 0
         
@@ -47,13 +49,15 @@ class Review(object):
                     split_review.extend(split_word)
         self.text = split_review
 
-    def train_tokenize(self, sent_freqs):
+    def train_tokenize(self, sent_freqs, casing_freqs):
         split_review = []
         stopword_count = 0
         with open(self.path, 'r') as f:
             for line in f:
-                for word in line.split():
+                for index, word in enumerate(line.split()):
                     split_word = space_punctuation(word)
+                    if index == 0:
+                        casing_freqs[split_word[0]] += 1
                     split_review.extend(split_word)
                     for seg in split_word:
                         sent_freqs[seg] += 1
@@ -126,19 +130,21 @@ def get_sentiments(lex_path):
             unweight_lex[entry['word1']] = sign
     return unweight_lex, weight_lex
 
-def sign_test(test1_results, test2_results):
+def sign_test(results, label_1, label_2):
     test1_count = test2_count = 0
-    for obs in test1_results:
-        if obs in test2_results:
-            if test1_results[obs] == test2_results[obs]:
+    for obs in results[label_1]:
+        if obs in results[label_2]:
+            if results[label_1][obs] == results[label_2][obs]:
                 # Add half to each for ties
                 test1_count += 0.5
                 test2_count += 0.5
-            elif test1_results[obs] > test2_results[obs]:
+            elif results[label_1][obs] > results[label_2][obs]:
                 test1_count += 1
-            elif test1_results[obs] < test2_results[obs]:
+            elif results[label_1][obs] < results[label_2][obs]:
                 test2_count += 1
-    print two_sided_binomial(round(test1_count), round(test2_count))
+    significance = two_sided_binomial(round(test1_count), round(test2_count))
+    print "Comparing {} and {}: equal with probability {}".format(
+        label_1, label_2, significance)
 
 def two_sided_binomial(test1, test2):
     return binom_test((test1, test2), p=0.5, alternative='two-sided')
@@ -151,10 +157,10 @@ def naive_bayes(review, freqs, results, smooth=1.0):
     total_neg = sum(freqs.neg.values())
     for word in review.text:
         if (smooth > 0.0 or (freqs.pos[word] and freqs.neg[word])):
-            pos_prob += log(
-                (freqs.pos[word] + smooth) / ((1 + smooth) * total_pos))
-            neg_prob += log(
-                (freqs.neg[word] + smooth) / ((1 + smooth) * total_neg))
+            pos_prob += (log(freqs.pos[word] + smooth)
+                         - log((1 + smooth) * total_pos))
+            neg_prob += (log(freqs.neg[word] + smooth)
+                         - log((1 + smooth) * total_neg))
     if (pos_prob - neg_prob) * review.rating > 0.0:
         results[review] = 1
     else:
@@ -170,10 +176,10 @@ def naive_bayes_stopwords(review, freqs, results, smooth=1.0):
     for word in review.text:
         if (smooth > 0.0 or (pos_freqs[word] and neg_freqs[word])):
             if not word in STOPWORDS:
-                pos_prob += log(
-                    (freqs.pos[word] + smooth) / ((1 + smooth) * total_pos))
-                neg_prob += log(
-                    (freqs.neg[word] + smooth) / ((1 + smooth) * total_neg))
+                pos_prob += (log(freqs.pos[word] + smooth)
+                             - log((1 + smooth) * total_pos))
+                neg_prob += (log(freqs.neg[word] + smooth)
+                             - log((1 + smooth) * total_neg))
     if (pos_prob - neg_prob) * review.rating > 0.0:
         results[review] = 1
     else:
@@ -184,12 +190,27 @@ def train(train_reviews, results):
     freqs = Freqs()
     for review in train_reviews:
         if review.rating == 1:
-            freqs.pos_stopwords += review.train_tokenize(freqs.pos)
+            freqs.pos_stopwords += review.train_tokenize(freqs.pos,
+                                                         freqs.pos_casing)
         else:
-            freqs.neg_stopwords += review.train_tokenize(freqs.neg)
+            freqs.neg_stopwords += review.train_tokenize(freqs.neg,
+                                                         freqs.neg_casing)
         results['uw_lex'][review] = review.lexicon_score(unweight_lex)
         results['w_lex'][review] = review.lexicon_score(weight_lex)
+    adjust_casing(freqs.pos, pos_casing)
+    adjust_casing(freqs.neg, neg_casing)
     return freqs
+
+def adjust_casing(freqs, casing):
+    ''' casing contains frequency counts for first token in each sentence
+    If any word only appears with a given casing when it is the first
+    word of a sentence, its frequency counts should be adjusted
+    '''
+    for token in casing:
+        if casing[token] == freqs[token] + freqs[token.lower()]:
+            freqs[token.lower()] += freqs.pop(token)
+        else:
+            casing.pop(token)
 
 def split_train_test(reviews, low, high):
     train, test = [], []
@@ -224,8 +245,8 @@ if __name__ == '__main__':
     test(test_reviews, freqs, unweight_lex, weight_lex, results)
     for result in results:
         print result, sum(results[result].values()) / len(results[result])
-    sign_test(results['w_lex'], results['uw_lex'])
-    sign_test(results['n_bayes'], results['w_lex'])
-    sign_test(results['bayes_smooth'], results['n_bayes'])
-    sign_test(results['bayes_smooth'], results['bayes_smooth_stopwords'])
+    sign_test(results, 'w_lex', 'uw_lex')
+    sign_test(results, 'n_bayes', 'w_lex')
+    sign_test(results, 'bayes_smooth', 'n_bayes')
+    sign_test(results, 'bayes_smooth', 'bayes_smooth_stopwords')
     
