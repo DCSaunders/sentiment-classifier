@@ -14,6 +14,13 @@ GENERIC_PUNC = re.compile(r"(\w*)([{}])(\w*)".format(string.punctuation.replace(
 POS = 'POS'
 NEG = 'NEG'
 
+class Freqs(object):
+    def __init__(self):
+        self.pos = collections.defaultdict(int)
+        self.neg = collections.defaultdict(int)
+        self.pos_stopwords = 0
+        self.neg_stopwords = 0
+        
 class Review(object):
     def __init__(self, rating, path):
         self.rating = rating
@@ -42,6 +49,7 @@ class Review(object):
 
     def train_tokenize(self, sent_freqs):
         split_review = []
+        stopword_count = 0
         with open(self.path, 'r') as f:
             for line in f:
                 for word in line.split():
@@ -49,7 +57,10 @@ class Review(object):
                     split_review.extend(split_word)
                     for seg in split_word:
                         sent_freqs[seg] += 1
+                        if seg in STOPWORDS:
+                            stopword_count += 1
         self.text = split_review
+        return stopword_count
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -131,45 +142,54 @@ def sign_test(test1_results, test2_results):
 
 def two_sided_binomial(test1, test2):
     return binom_test((test1, test2), p=0.5, alternative='two-sided')
-        
-def naive_bayes(review, pos_freqs, neg_freqs, results):
+    
+def naive_bayes(review, freqs, results, smooth=1.0):
+    # Naive Bayes with optional smoothing.
     # Assume equal class priors: P(neg) = P(pos) = 0.5
     neg_prob = pos_prob = 0.0
-    total_pos = sum(pos_freqs.values())
-    total_neg = sum(neg_freqs.values())
+    total_pos = sum(freqs.pos.values())
+    total_neg = sum(freqs.neg.values())
     for word in review.text:
-        if pos_freqs[word] and neg_freqs[word]:
-            pos_prob += log(pos_freqs[word] / total_pos)
-            neg_prob += log(neg_freqs[word] / total_neg)
+        if (smooth > 0.0 or (freqs.pos[word] and freqs.neg[word])):
+            pos_prob += log(
+                (freqs.pos[word] + smooth) / ((1 + smooth) * total_pos))
+            neg_prob += log(
+                (freqs.neg[word] + smooth) / ((1 + smooth) * total_neg))
     if (pos_prob - neg_prob) * review.rating > 0.0:
-        results['n_bayes'][review] = 1
+        results[review] = 1
     else:
-        results['n_bayes'][review] = 0
+        results[review] = 0
+        
 
-def smoothed_bayes(review, pos_freqs, neg_freqs, results, smooth=1.0):
+def naive_bayes_stopwords(review, freqs, results, smooth=1.0):
+    # Naive Bayes with optional smoothing and stopwords.
     # Assume equal class priors: P(neg) = P(pos) = 0.5
     neg_prob = pos_prob = 0.0
-    total_pos = sum(pos_freqs.values())
-    total_neg = sum(neg_freqs.values())
+    total_pos = sum(freqs.pos.values()) - freqs.pos_stopwords
+    total_neg = sum(freqs.neg.values()) - freqs.neg_stopwords
     for word in review.text:
-        pos_prob += log((pos_freqs[word] + smooth) / ((1 + smooth) * total_pos))
-        neg_prob += log((neg_freqs[word] + smooth) / ((1 + smooth) * total_neg))
+        if (smooth > 0.0 or (pos_freqs[word] and neg_freqs[word])):
+            if not word in STOPWORDS:
+                pos_prob += log(
+                    (freqs.pos[word] + smooth) / ((1 + smooth) * total_pos))
+                neg_prob += log(
+                    (freqs.neg[word] + smooth) / ((1 + smooth) * total_neg))
     if (pos_prob - neg_prob) * review.rating > 0.0:
-        results['bayes_smooth'][review] = 1
+        results[review] = 1
     else:
-        results['bayes_smooth'][review] = 0
-        
+        results[review] = 0
+
+
 def train(train_reviews, results):
-    pos_freqs = collections.defaultdict(int)
-    neg_freqs = collections.defaultdict(int)
+    freqs = Freqs()
     for review in train_reviews:
         if review.rating == 1:
-            review.train_tokenize(pos_freqs)
+            freqs.pos_stopwords += review.train_tokenize(freqs.pos)
         else:
-            review.train_tokenize(neg_freqs)
+            freqs.neg_stopwords += review.train_tokenize(freqs.neg)
         results['uw_lex'][review] = review.lexicon_score(unweight_lex)
         results['w_lex'][review] = review.lexicon_score(weight_lex)
-    return pos_freqs, neg_freqs
+    return freqs
 
 def split_train_test(reviews, low, high):
     train, test = [], []
@@ -181,11 +201,13 @@ def split_train_test(reviews, low, high):
             test.append(review)
     return train, test
 
-def test(tests, pos_freqs, neg_freqs, unweight_lex, weight_lex, results):
+def test(tests, freqs, unweight_lex, weight_lex, results):
     for review in tests:
         review.test_tokenize()
-        naive_bayes(review, pos_freqs, neg_freqs, results)
-        smoothed_bayes(review, pos_freqs, neg_freqs, results)
+        naive_bayes(review, freqs, results['n_bayes'], smooth=0.0)
+        naive_bayes(review, freqs, results['bayes_smooth'], smooth=1.0)
+        naive_bayes_stopwords(review, freqs,
+                              results['bayes_smooth_stopwords'], smooth=1.0)
         results['uw_lex'][review] = review.lexicon_score(unweight_lex)
         results['w_lex'][review] = review.lexicon_score(weight_lex)
     
@@ -195,15 +217,15 @@ if __name__ == '__main__':
     reviews = []
     get_review_files(args.path, POS, reviews)
     get_review_files(args.path, NEG, reviews)
-    results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {}, 'bayes_smooth': {}}
+    results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
+               'bayes_smooth': {}, 'bayes_smooth_stopwords': {}}
     train_reviews, test_reviews = split_train_test(reviews, low=0, high=800)
-    pos_freqs, neg_freqs = train(train_reviews, results)
-    test(test_reviews, pos_freqs, neg_freqs, unweight_lex, weight_lex, results)
-    print sum(results['w_lex'].values()) / len(reviews) 
-    print sum(results['uw_lex'].values()) / len(reviews)
-    print sum(results['n_bayes'].values()) / len(results['n_bayes'])
-    print sum(results['bayes_smooth'].values()) / len(results['bayes_smooth']) 
+    freqs = train(train_reviews, results)
+    test(test_reviews, freqs, unweight_lex, weight_lex, results)
+    for result in results:
+        print result, sum(results[result].values()) / len(results[result])
     sign_test(results['w_lex'], results['uw_lex'])
     sign_test(results['n_bayes'], results['w_lex'])
     sign_test(results['bayes_smooth'], results['n_bayes'])
+    sign_test(results['bayes_smooth'], results['bayes_smooth_stopwords'])
     
