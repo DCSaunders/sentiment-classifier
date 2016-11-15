@@ -66,6 +66,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--path', help='path to dir with POS and NEG review subdirs', default='data')
     parser.add_argument('-l', '--lexicon', help='path to sentiment lexicon', default='resources/sent_lexicon')
+    parser.add_argument('-N', '--cv_folds', help='number of folds for N-fold cross-validation', default=10)
     args = parser.parse_args()
     return args
 
@@ -198,9 +199,9 @@ def split_train_test(reviews, low, high):
     for review in reviews:
         num = int(os.path.basename(review.path)[2:5])
         if (num >= low) and (num < high):
-            train.append(review)
-        else:
             test.append(review)
+        else:
+            train.append(review)
     return train, test
 
 def test(tests, freqs, unweight_lex, weight_lex, results):
@@ -212,22 +213,35 @@ def test(tests, freqs, unweight_lex, weight_lex, results):
                               results['bayes_smooth_stopwords'], smooth=1.0)
         results['uw_lex'][review] = review.lexicon_score(unweight_lex)
         results['w_lex'][review] = review.lexicon_score(weight_lex)
-    
+
+def cross_validate(reviews, unweight_lex, weight_lex, cv_folds):
+    count = len(reviews) / 2 # assume equal number pos/neg reviews
+    fold_size = count / cv_folds
+    accuracies = collections.defaultdict(list)
+    for fold in range(cv_folds):
+        results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
+                   'bayes_smooth': {}, 'bayes_smooth_stopwords': {}}
+        train_reviews, test_reviews = split_train_test(
+            reviews,
+            low=(fold * fold_size),
+            high=((fold + 1) * fold_size))
+        freqs = train(train_reviews, results)
+        test(test_reviews, freqs, unweight_lex, weight_lex, results)
+        for result in results:
+            accuracies[result].append(sum(results[result].values())
+                                      / len(results[result]))
+        sign_test(results, 'w_lex', 'uw_lex')
+        sign_test(results, 'n_bayes', 'w_lex')
+        sign_test(results, 'bayes_smooth', 'n_bayes')
+        sign_test(results, 'bayes_smooth', 'bayes_smooth_stopwords')
+    print accuracies
+
+        
 if __name__ == '__main__':
     args = get_args()
     unweight_lex, weight_lex = get_sentiments(args.lexicon)
     reviews = []
     get_review_files(args.path, POS, reviews)
     get_review_files(args.path, NEG, reviews)
-    results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
-               'bayes_smooth': {}, 'bayes_smooth_stopwords': {}}
-    train_reviews, test_reviews = split_train_test(reviews, low=0, high=900)
-    freqs = train(train_reviews, results)
-    test(test_reviews, freqs, unweight_lex, weight_lex, results)
-    for result in results:
-        print result, sum(results[result].values()) / len(results[result])
-    sign_test(results, 'w_lex', 'uw_lex')
-    sign_test(results, 'n_bayes', 'w_lex')
-    sign_test(results, 'bayes_smooth', 'n_bayes')
-    sign_test(results, 'bayes_smooth', 'bayes_smooth_stopwords')
-    
+    cross_validate(reviews, unweight_lex, weight_lex, args.cv_folds)
+     

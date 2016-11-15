@@ -3,7 +3,7 @@ Tokenizer
 
 - All punctuation is whitespace separated.
 - Only adjustment is for contracted negations - e.g. "isn't" -> "is" "n't"
-- TODO: casing check - after ALL tokenization look through and downcase any that always appear a certain way except at start of sentence. Can add more to this later.
+- TODO: casing check - after ALL tokenization define an extra frequencies object. look through and downcase any that always appear a certain way except at start of sentence. Can add more to this later. Also need to deal with -- dashes
 - later: negation token, deal with casing
 
 Sentiment lexicon
