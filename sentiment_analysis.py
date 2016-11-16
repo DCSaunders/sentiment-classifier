@@ -153,11 +153,10 @@ def naive_bayes(review, freqs, results, smooth=1.0):
     total_pos = sum(freqs.pos.values())
     total_neg = sum(freqs.neg.values())
     for word in review.text:
-        if (smooth > 0.0 or (freqs.pos[word] and freqs.neg[word])):
-            pos_prob += (log(freqs.pos[word] + smooth)
-                         - log((1 + smooth) * total_pos))
-            neg_prob += (log(freqs.neg[word] + smooth)
-                         - log((1 + smooth) * total_neg))
+        pos_prob += (log(freqs.pos[word] + smooth)
+                     - log((1 + smooth) * total_pos))
+        neg_prob += (log(freqs.neg[word] + smooth)
+                     - log((1 + smooth) * total_neg))
     if (pos_prob - neg_prob) * review.rating > 0.0:
         results[review] = 1
     else:
@@ -171,12 +170,11 @@ def naive_bayes_stopwords(review, freqs, results, smooth=1.0):
     total_pos = sum(freqs.pos.values()) - freqs.pos_stopwords
     total_neg = sum(freqs.neg.values()) - freqs.neg_stopwords
     for word in review.text:
-        if (smooth > 0.0 or (pos_freqs[word] and neg_freqs[word])):
-            if not word in STOPWORDS:
-                pos_prob += (log(freqs.pos[word] + smooth)
-                             - log((1 + smooth) * total_pos))
-                neg_prob += (log(freqs.neg[word] + smooth)
-                             - log((1 + smooth) * total_neg))
+       if not word in STOPWORDS:
+           pos_prob += (log(freqs.pos[word] + smooth)
+                        - log((1 + smooth) * total_pos))
+           neg_prob += (log(freqs.neg[word] + smooth)
+                        - log((1 + smooth) * total_neg))
     if (pos_prob - neg_prob) * review.rating > 0.0:
         results[review] = 1
     else:
@@ -230,6 +228,7 @@ def cross_validate(reviews, unweight_lex, weight_lex, cv_folds):
         for result in results:
             accuracies[result].append(sum(results[result].values())
                                       / len(results[result]))
+        print accuracies
         sign_test(results, 'w_lex', 'uw_lex')
         sign_test(results, 'n_bayes', 'w_lex')
         sign_test(results, 'bayes_smooth', 'n_bayes')
