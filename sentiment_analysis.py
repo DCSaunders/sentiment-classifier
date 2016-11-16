@@ -26,8 +26,10 @@ class Review(object):
         self.rating = rating
         self.path = path
         self.text = []
-        self.bag_words = {}
-
+        self.bag_words = collections.defaultdict(int)
+        self.first_in_sentence = collections.defaultdict(int)
+        self.stopwords = 0
+        
     def lexicon_score(self, lexicon):
         score = 0
         for token in self.text:
@@ -216,6 +218,9 @@ def cross_validate(reviews, unweight_lex, weight_lex, cv_folds):
     count = len(reviews) / 2 # assume equal number pos/neg reviews
     fold_size = count / cv_folds
     accuracies = collections.defaultdict(list)
+    # TODO: tokenize all reviews outside the CV loop.
+    # Training should then be fast - just summing the bags of each review.
+    # Reviews can also track their own cased words.
     for fold in range(cv_folds):
         results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
                    'bayes_smooth': {}, 'bayes_smooth_stopwords': {}}
