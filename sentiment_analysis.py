@@ -15,7 +15,8 @@ sys.setdefaultencoding('utf-8')
 
 STOPWORDS = set([',', '.', 'the', 'a', 'of', 'to', 'and', 'is', '"', 'in', "'s", 'that', 'it', ')', '(', 'with', 'I', 'as', 'for', 'film' 'this', 'his', 'her', 'their', 'they', 'film'])
 
-GENERIC_PUNC = re.compile(r"(\w*)([{}])(\w*)".format(string.punctuation.replace('-','')))
+GENERIC_PUNC = re.compile(r"(\w*-?\w*)(--|[,!?%`./();$&@#:\"'])(\w*-?\w*)") # Would be nice to match ellipsis as well, and multi-hyphenated words on either side of punctuation
+
 POS = 'POS'
 NEG = 'NEG'
 
@@ -195,7 +196,6 @@ def train(train_reviews, results):
         else:
             review.train(freqs.neg, to_recase.neg)
             freqs.neg_stopwords += review.stopwords
-    print to_recase.pos
     recased_freqs = recase(to_recase, freqs)
     return freqs, recased_freqs
 
