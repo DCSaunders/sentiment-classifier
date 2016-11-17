@@ -1,12 +1,17 @@
 #!/usr/bin/env python
 from __future__ import division
 import argparse
+import codecs
 import collections
+import copy
 import os
 import re
 import string
+import sys
 from numpy import log
 from scipy.stats import binom_test
+reload(sys)
+sys.setdefaultencoding('utf-8')
 
 STOPWORDS = set([',', '.', 'the', 'a', 'of', 'to', 'and', 'is', '"', 'in', "'s", 'that', 'it', ')', '(', 'with', 'I', 'as', 'for', 'film' 'this', 'his', 'her', 'their', 'they', 'film'])
 
@@ -32,37 +37,32 @@ class Review(object):
         
     def lexicon_score(self, lexicon):
         score = 0
-        for token in self.text:
+        for token in self.bag_words:
             if token in lexicon:
-                score += lexicon[token]
+                score += self.bag_words[token] * lexicon[token]
         if (self.rating * score > 0):
             return 1
         else:
             return 0
-        
-    def test_tokenize(self):
-        split_review = []
-        with open(self.path, 'r') as f:
-            for line in f:
-                for word in line.split():
-                    split_word = space_punctuation(word)
-                    split_review.extend(split_word)
-        self.text = split_review
 
-    def train_tokenize(self, sent_freqs):
-        split_review = []
-        stopword_count = 0
-        with open(self.path, 'r') as f:
+    def train(self, freqs, to_recase):
+        for tok, freq in self.bag_words.items():
+            freqs[tok] += freq
+        for tok, freq in self.first_in_sentence.items():
+            to_recase[tok] += freq
+    
+    def tokenize(self):
+        with codecs.open(self.path, 'r', encoding='utf-8') as f:
             for line in f:
                 for index, word in enumerate(line.split()):
                     split_word = space_punctuation(word)
-                    split_review.extend(split_word)
+                    self.text.extend(split_word)
+                    if (index == 0):
+                        self.first_in_sentence[split_word[0]] += 1
                     for seg in split_word:
-                        sent_freqs[seg] += 1
+                        self.bag_words[seg] += 1
                         if seg in STOPWORDS:
-                            stopword_count += 1
-        self.text = split_review
-        return stopword_count
+                            self.stopwords += 1
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -103,7 +103,9 @@ def get_review_files(review_dir, review_type, reviews):
     review_paths = walk_dir(search_dir)
     rating = 1 if review_type == POS else -1
     for path in review_paths:
-        reviews.append(Review(rating, path))
+        new_review = Review(rating, path)
+        new_review.tokenize()
+        reviews.append(new_review)
 
 def get_sentiments(lex_path):
     '''
@@ -185,14 +187,22 @@ def naive_bayes_stopwords(review, freqs, results, smooth=1.0):
 
 def train(train_reviews, results):
     freqs = Freqs()
+    to_recase = Freqs()
     for review in train_reviews:
         if review.rating == 1:
-            freqs.pos_stopwords += review.train_tokenize(freqs.pos)
+            review.train(freqs.pos, to_recase.pos)
+            freqs.pos_stopwords += review.stopwords
         else:
-            freqs.neg_stopwords += review.train_tokenize(freqs.neg)
-        results['uw_lex'][review] = review.lexicon_score(unweight_lex)
-        results['w_lex'][review] = review.lexicon_score(weight_lex)
-    return freqs
+            review.train(freqs.neg, to_recase.neg)
+            freqs.neg_stopwords += review.stopwords
+    print to_recase.pos
+    recased_freqs = recase(to_recase, freqs)
+    return freqs, recased_freqs
+
+
+def recase(to_recase, freqs):
+    recased_freqs = collections.defaultdict(int)
+    return recased_freqs
 
 def split_train_test(reviews, low, high):
     train, test = [], []
@@ -204,48 +214,49 @@ def split_train_test(reviews, low, high):
             train.append(review)
     return train, test
 
-def test(tests, freqs, unweight_lex, weight_lex, results):
+def test(tests, freqs, results):
     for review in tests:
-        review.test_tokenize()
         naive_bayes(review, freqs, results['n_bayes'], smooth=0.0)
         naive_bayes(review, freqs, results['bayes_smooth'], smooth=1.0)
         naive_bayes_stopwords(review, freqs,
                               results['bayes_smooth_stopwords'], smooth=1.0)
-        results['uw_lex'][review] = review.lexicon_score(unweight_lex)
-        results['w_lex'][review] = review.lexicon_score(weight_lex)
+       
 
-def cross_validate(reviews, unweight_lex, weight_lex, cv_folds):
+def cross_validate(reviews, results, cv_folds):
     count = len(reviews) / 2 # assume equal number pos/neg reviews
     fold_size = count / cv_folds
     accuracies = collections.defaultdict(list)
-    # TODO: tokenize all reviews outside the CV loop.
-    # Training should then be fast - just summing the bags of each review.
-    # Reviews can also track their own cased words.
     for fold in range(cv_folds):
-        results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
-                   'bayes_smooth': {}, 'bayes_smooth_stopwords': {}}
-        train_reviews, test_reviews = split_train_test(
-            reviews,
-            low=(fold * fold_size),
-            high=((fold + 1) * fold_size))
-        freqs = train(train_reviews, results)
-        test(test_reviews, freqs, unweight_lex, weight_lex, results)
+        low = fold * fold_size
+        high = (fold + 1) * fold_size
+        train_reviews, test_reviews = split_train_test(reviews, low, high)
+        freqs, recased_freqs = train(train_reviews, results)
+        test(test_reviews, freqs, results)
         for result in results:
             accuracies[result].append(sum(results[result].values())
                                       / len(results[result]))
-        print accuracies
-        sign_test(results, 'w_lex', 'uw_lex')
         sign_test(results, 'n_bayes', 'w_lex')
         sign_test(results, 'bayes_smooth', 'n_bayes')
         sign_test(results, 'bayes_smooth', 'bayes_smooth_stopwords')
     print accuracies
 
+def lexicon_test(reviews, unweight_lex, weight_lex, results):
+    for review in reviews:
+        results['uw_lex'][review] = review.lexicon_score(unweight_lex)
+        results['w_lex'][review] = review.lexicon_score(weight_lex)
+    print 'uw_lex', sum(results['uw_lex'].values()) / len(results['uw_lex'])
+    print 'w_lex', sum(results['w_lex'].values()) / len(results['w_lex'])
+    sign_test(results, 'w_lex', 'uw_lex')
+        
         
 if __name__ == '__main__':
     args = get_args()
     unweight_lex, weight_lex = get_sentiments(args.lexicon)
     reviews = []
+    results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
+                   'bayes_smooth': {}, 'bayes_smooth_stopwords': {}}
     get_review_files(args.path, POS, reviews)
     get_review_files(args.path, NEG, reviews)
-    cross_validate(reviews, unweight_lex, weight_lex, args.cv_folds)
+    lexicon_test(reviews, unweight_lex, weight_lex, results)
+    cross_validate(reviews, results, args.cv_folds)
      
