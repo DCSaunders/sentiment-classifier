@@ -134,16 +134,16 @@ def get_sentiments(lex_path):
 
 def sign_test(results, label_1, label_2):
     test1_count = test2_count = 0
-    for obs in results[label_1]:
-        if obs in results[label_2]:
-            if results[label_1][obs] == results[label_2][obs]:
-                # Add half to each for ties
-                test1_count += 0.5
-                test2_count += 0.5
-            elif results[label_1][obs] > results[label_2][obs]:
-                test1_count += 1
-            elif results[label_1][obs] < results[label_2][obs]:
-                test2_count += 1
+    shared_obs = set(results[label_1]).intersection(results[label_2])
+    for obs in shared_obs:
+        if results[label_1][obs] == results[label_2][obs]:
+            # Add half to each for ties
+            test1_count += 0.5
+            test2_count += 0.5
+        elif results[label_1][obs] > results[label_2][obs]:
+            test1_count += 1
+        elif results[label_1][obs] < results[label_2][obs]:
+            test2_count += 1
     significance = two_sided_binomial(round(test1_count), round(test2_count))
     print "Comparing {} and {}: equal with probability {}".format(
         label_1, label_2, significance)
@@ -224,6 +224,7 @@ def test(tests, freqs, results):
 
 def cross_validate(reviews, results, cv_folds):
     count = len(reviews) / 2 # assume equal number pos/neg reviews
+    labels = ['n_bayes', 'bayes_smooth', 'bayes_smooth_stopwords']
     fold_size = count / cv_folds
     accuracies = collections.defaultdict(list)
     for fold in range(cv_folds):
@@ -232,12 +233,15 @@ def cross_validate(reviews, results, cv_folds):
         train_reviews, test_reviews = split_train_test(reviews, low, high)
         freqs, recased_freqs = train(train_reviews, results)
         test(test_reviews, freqs, results)
-        for result in results:
-            accuracies[result].append(sum(results[result].values())
-                                      / len(results[result]))
         sign_test(results, 'n_bayes', 'w_lex')
+        sign_test(results, 'bayes_smooth', 'uw_lex')
+        sign_test(results, 'bayes_smooth', 'w_lex')
         sign_test(results, 'bayes_smooth', 'n_bayes')
         sign_test(results, 'bayes_smooth', 'bayes_smooth_stopwords')
+        for label in labels:
+            accuracies[label].append(sum(results[label].values())
+                                      / len(results[label]))
+            results[label] = {}
     print accuracies
 
 def lexicon_test(reviews, unweight_lex, weight_lex, results):
