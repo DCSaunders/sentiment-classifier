@@ -151,6 +151,28 @@ def sign_test(results, label_1, label_2):
 def two_sided_binomial(test1, test2):
     return binom_test((test1, test2), p=0.5, alternative='two-sided')
     
+def naive_bayes_recased(review, freqs, results, smooth=1.0):
+    # Naive Bayes with optional smoothing and recasing.
+    # Assume equal class priors: P(neg) = P(pos) = 0.5
+    neg_prob = pos_prob = 0.0
+    total_pos = sum(freqs.pos.values())
+    total_neg = sum(freqs.neg.values())
+    recase = collections.defaultdict(int)
+    for tok, freq in review.first_in_sentence.items():
+        recase[tok] = freq
+    for word in review.text:
+        if recase[word] > 0: 
+            word = word.lower()
+            recase[word] -= 1
+        pos_prob += (log(freqs.pos[word] + smooth)
+                     - log((1 + smooth) * total_pos))
+        neg_prob += (log(freqs.neg[word] + smooth)
+                     - log((1 + smooth) * total_neg))
+    if (pos_prob - neg_prob) * review.rating > 0.0:
+        results[review] = 1
+    else:
+        results[review] = 0
+
 def naive_bayes(review, freqs, results, smooth=1.0):
     # Naive Bayes with optional smoothing.
     # Assume equal class priors: P(neg) = P(pos) = 0.5
@@ -166,7 +188,7 @@ def naive_bayes(review, freqs, results, smooth=1.0):
         results[review] = 1
     else:
         results[review] = 0
-        
+                
 
 def naive_bayes_stopwords(review, freqs, results, smooth=1.0):
     # Naive Bayes with optional smoothing and stopwords.
@@ -189,6 +211,7 @@ def naive_bayes_stopwords(review, freqs, results, smooth=1.0):
 def train(train_reviews, results):
     freqs = Freqs()
     to_recase = Freqs()
+    recased_freqs = Freqs()
     for review in train_reviews:
         if review.rating == 1:
             review.train(freqs.pos, to_recase.pos)
@@ -196,12 +219,19 @@ def train(train_reviews, results):
         else:
             review.train(freqs.neg, to_recase.neg)
             freqs.neg_stopwords += review.stopwords
-    recased_freqs = recase(to_recase, freqs)
+    recased_freqs.pos = recase(to_recase.pos, freqs.pos)
+    recased_freqs.neg = recase(to_recase.neg, freqs.neg)
     return freqs, recased_freqs
 
 
 def recase(to_recase, freqs):
     recased_freqs = collections.defaultdict(int)
+    for tok, freq in freqs.items():
+        if to_recase[tok] == freq:
+            recased_freqs[tok.lower] = freq + freqs[tok.lower()]
+        else:
+            to_recase.pop(tok)
+            recased_freqs[tok] = freq
     return recased_freqs
 
 def split_train_test(reviews, low, high):
@@ -214,17 +244,18 @@ def split_train_test(reviews, low, high):
             train.append(review)
     return train, test
 
-def test(tests, freqs, results):
+def test(tests, freqs, recased_freqs, results):
     for review in tests:
         naive_bayes(review, freqs, results['n_bayes'], smooth=0.0)
         naive_bayes(review, freqs, results['bayes_smooth'], smooth=1.0)
+        naive_bayes_recased(review, recased_freqs, results['bayes_recased'], smooth=1.0)
         naive_bayes_stopwords(review, freqs,
                               results['bayes_smooth_stopwords'], smooth=1.0)
        
 
 def cross_validate(reviews, results, cv_folds):
     count = len(reviews) / 2 # assume equal number pos/neg reviews
-    labels = ['n_bayes', 'bayes_smooth', 'bayes_smooth_stopwords']
+    labels = ['n_bayes', 'bayes_smooth', 'bayes_recased', 'bayes_smooth_stopwords']
     fold_size = count / cv_folds
     accuracies = collections.defaultdict(list)
     for fold in range(cv_folds):
@@ -232,12 +263,16 @@ def cross_validate(reviews, results, cv_folds):
         high = (fold + 1) * fold_size
         train_reviews, test_reviews = split_train_test(reviews, low, high)
         freqs, recased_freqs = train(train_reviews, results)
-        test(test_reviews, freqs, results)
+        test(test_reviews, freqs, recased_freqs, results)
         sign_test(results, 'n_bayes', 'w_lex')
         sign_test(results, 'bayes_smooth', 'uw_lex')
         sign_test(results, 'bayes_smooth', 'w_lex')
         sign_test(results, 'bayes_smooth', 'n_bayes')
         sign_test(results, 'bayes_smooth', 'bayes_smooth_stopwords')
+        sign_test(results, 'bayes_smooth', 'bayes_recased')
+        sign_test(results, 'bayes_recased', 'bayes_smooth_stopwords')
+        sign_test(results, 'bayes_recased', 'w_lex')
+        sign_test(results, 'bayes_recased', 'uw_lex')
         for label in labels:
             accuracies[label].append(sum(results[label].values())
                                       / len(results[label]))
@@ -258,9 +293,9 @@ if __name__ == '__main__':
     unweight_lex, weight_lex = get_sentiments(args.lexicon)
     reviews = []
     results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
-                   'bayes_smooth': {}, 'bayes_smooth_stopwords': {}}
+               'bayes_smooth': {}, 'bayes_smooth_stopwords': {},
+               'bayes_recased': {}}
     get_review_files(args.path, POS, reviews)
     get_review_files(args.path, NEG, reviews)
     lexicon_test(reviews, unweight_lex, weight_lex, results)
     cross_validate(reviews, results, args.cv_folds)
-     
