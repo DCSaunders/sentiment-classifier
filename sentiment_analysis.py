@@ -15,7 +15,7 @@ sys.setdefaultencoding('utf-8')
 
 STOPWORDS = set([',', '.', 'the', 'a', 'of', 'to', 'and', 'is', '"', 'in', "'s", 'that', 'it', ')', '(', 'with', 'I', 'as', 'for', 'film' 'this', 'his', 'her', 'their', 'they', 'film'])
 
-GENERIC_PUNC = re.compile(r"(\w*-?\w*)(--|[,!?%`./();$&@#:\"'])(\w*-?\w*)") # Would be nice to match ellipsis as well, and multi-hyphenated words on either side of punctuation
+GENERIC_PUNC = re.compile(r"(\w*-?\w*)(--|\.\.\.|[,!?%`./();$&@#:\"'])(\w*-?\w*)") 
 
 POS = 'POS'
 NEG = 'NEG'
@@ -32,6 +32,7 @@ class Review(object):
         self.rating = rating
         self.path = path
         self.text = []
+        self.bag_bigrams = collections.defaultdict(int)
         self.bag_words = collections.defaultdict(int)
         self.first_in_sentence = collections.defaultdict(int)
         self.stopwords = 0
@@ -64,6 +65,13 @@ class Review(object):
                         self.bag_words[seg] += 1
                         if seg in STOPWORDS:
                             self.stopwords += 1
+        self.get_bigrams()
+        
+    def get_bigrams(self):
+        bigrams = zip(self.text, self.text[1:])
+        for token in bigrams:
+            self.bag_bigrams[token] += 1
+            
 
 def get_args():
     parser = argparse.ArgumentParser()
