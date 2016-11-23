@@ -32,23 +32,24 @@ class Review(object):
         self.rating = rating
         self.path = path
         self.text = []
-        self.bag_bigrams = collections.defaultdict(int)
-        self.bag_words = collections.defaultdict(int)
+        self.bag_ngrams = {1: collections.defaultdict(int),
+                           2: collections.defaultdict(int),
+                           3: collections.defaultdict(int)}
         self.first_in_sentence = collections.defaultdict(int)
         self.stopwords = 0
         
     def lexicon_score(self, lexicon):
         score = 0
-        for token in self.bag_words:
+        for token in self.bag_ngrams[1]:
             if token in lexicon:
-                score += self.bag_words[token] * lexicon[token]
+                score += self.bag_ngrams[1][token] * lexicon[token]
         if (self.rating * score > 0):
             return 1
         else:
             return 0
 
-    def train(self, freqs, to_recase):
-        for tok, freq in self.bag_words.items():
+    def train_unigrams(self, freqs, to_recase):
+        for tok, freq in self.bag_ngrams[1].items():
             freqs[tok] += freq
         for tok, freq in self.first_in_sentence.items():
             to_recase[tok] += freq
@@ -62,16 +63,18 @@ class Review(object):
                     if (index == 0):
                         self.first_in_sentence[split_word[0]] += 1
                     for seg in split_word:
-                        self.bag_words[seg] += 1
+                        self.bag_ngrams[1][seg] += 1
                         if seg in STOPWORDS:
                             self.stopwords += 1
-        self.get_bigrams()
+        self.get_ngrams()
         
-    def get_bigrams(self):
+    def get_ngrams(self):
         bigrams = zip(self.text, self.text[1:])
         for token in bigrams:
-            self.bag_bigrams[token] += 1
-            
+            self.bag_ngrams[2][token] += 1
+        trigrams = zip(self.text, self.text[1:], self.text[2:])
+        for token in trigrams:
+            self.bag_ngrams[3][token] += 1
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -181,16 +184,16 @@ def naive_bayes_recased(review, freqs, results, smooth=1.0):
     else:
         results[review] = 0
 
-def naive_bayes(review, freqs, results, smooth=1.0):
+def naive_bayes(review, freqs, results, smooth=1.0, ngram=1):
     # Naive Bayes with optional smoothing.
     # Assume equal class priors: P(neg) = P(pos) = 0.5
     neg_prob = pos_prob = 0.0
     total_pos = sum(freqs.pos.values())
     total_neg = sum(freqs.neg.values())
-    for word in review.text:
-        pos_prob += (log(freqs.pos[word] + smooth)
+    for tok in review.text: # TODO: this should read from n-grams - something strange happens if you do.
+        pos_prob += (log(freqs.pos[tok] + smooth)
                      - log((1 + smooth) * total_pos))
-        neg_prob += (log(freqs.neg[word] + smooth)
+        neg_prob += (log(freqs.neg[tok] + smooth)
                      - log((1 + smooth) * total_neg))
     if (pos_prob - neg_prob) * review.rating > 0.0:
         results[review] = 1
@@ -222,10 +225,10 @@ def train(train_reviews, results):
     recased_freqs = Freqs()
     for review in train_reviews:
         if review.rating == 1:
-            review.train(freqs.pos, to_recase.pos)
+            review.train_unigrams(freqs.pos, to_recase.pos)
             freqs.pos_stopwords += review.stopwords
         else:
-            review.train(freqs.neg, to_recase.neg)
+            review.train_unigrams(freqs.neg, to_recase.neg)
             freqs.neg_stopwords += review.stopwords
     recased_freqs.pos = recase(to_recase.pos, freqs.pos)
     recased_freqs.neg = recase(to_recase.neg, freqs.neg)
