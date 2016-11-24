@@ -172,13 +172,13 @@ def naive_bayes_recased(review, freqs, results, smooth=1.0):
     recase = collections.defaultdict(int)
     for tok, freq in review.first_in_sentence.items():
         recase[tok] = freq
-    for word in review.text:
-        if recase[word] > 0: 
-            word = word.lower()
-            recase[word] -= 1
-        pos_prob += (log(freqs.pos[word] + smooth)
+    for word, freq in review.bag_ngrams[1].items():
+        if recase[word] > 0: # lowercase instances accounted for separately
+            word = word.lower() 
+            recase[word] -= freq
+        pos_prob += freq * (log(freqs.pos[word] + smooth)
                      - log((1 + smooth) * total_pos))
-        neg_prob += (log(freqs.neg[word] + smooth)
+        neg_prob += freq * (log(freqs.neg[word] + smooth)
                      - log((1 + smooth) * total_neg))
     if (pos_prob - neg_prob) * review.rating > 0.0:
         results[review] = 1
@@ -208,11 +208,11 @@ def naive_bayes_stopwords(review, freqs, results, smooth=1.0):
     neg_prob = pos_prob = 0.0
     total_pos = sum(freqs.pos.values()) - freqs.pos_stopwords
     total_neg = sum(freqs.neg.values()) - freqs.neg_stopwords
-    for word in review.text:
-       if not word in STOPWORDS:
-           pos_prob += (log(freqs.pos[word] + smooth)
+    for word, freq in review.bag_ngrams[1].items():   
+        if not word in STOPWORDS:
+           pos_prob += freq * (log(freqs.pos[word] + smooth)
                         - log((1 + smooth) * total_pos))
-           neg_prob += (log(freqs.neg[word] + smooth)
+           neg_prob += freq * (log(freqs.neg[word] + smooth)
                         - log((1 + smooth) * total_neg))
     if (pos_prob - neg_prob) * review.rating > 0.0:
         results[review] = 1
