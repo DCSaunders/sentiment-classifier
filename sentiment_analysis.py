@@ -4,6 +4,7 @@ import argparse
 import codecs
 import collections
 import copy
+import numpy as np
 import os
 import re
 import string
@@ -161,6 +162,7 @@ def sign_test(results, label_1, label_2):
         label_1, label_2, significance)
 
 def two_sided_binomial(test1, test2):
+    # normal approximation: binom(p) - N(np, np^2)
     return binom_test((test1, test2), p=0.5, alternative='two-sided')
     
 def naive_bayes_recased(review, freqs, results, smooth=1.0):
@@ -180,6 +182,8 @@ def naive_bayes_recased(review, freqs, results, smooth=1.0):
                      - log((1 + smooth) * total_pos))
         neg_prob += freq * (log(freqs.neg[word] + smooth)
                      - log((1 + smooth) * total_neg))
+    if pos_prob == neg_prob:
+        pos_prob, neg_prob = np.random.rand(2)
     if (pos_prob - neg_prob) * review.rating > 0.0:
         results[review] = 1
     else:
@@ -196,6 +200,8 @@ def naive_bayes(review, freqs, results, smooth=1.0, ngram=1):
                      - log((1 + smooth) * total_pos))
         neg_prob += freq * (log(freqs.neg[tok] + smooth)
                      - log((1 + smooth) * total_neg))
+    if pos_prob == neg_prob:
+            pos_prob, neg_prob = np.random.rand(2)
     if (pos_prob - neg_prob) * review.rating > 0.0:
         results[review] = 1
     else:
@@ -214,6 +220,8 @@ def naive_bayes_stopwords(review, freqs, results, smooth=1.0):
                         - log((1 + smooth) * total_pos))
            neg_prob += freq * (log(freqs.neg[word] + smooth)
                         - log((1 + smooth) * total_neg))
+    if pos_prob == neg_prob:
+            pos_prob, neg_prob = np.random.rand(2)
     if (pos_prob - neg_prob) * review.rating > 0.0:
         results[review] = 1
     else:
@@ -315,6 +323,7 @@ def lexicon_test(reviews, unweight_lex, weight_lex, results):
         
         
 if __name__ == '__main__':
+    np.random.seed(1234)
     args = get_args()
     unweight_lex, weight_lex = get_sentiments(args.lexicon)
     reviews = []
