@@ -11,6 +11,7 @@ import string
 import sys
 from numpy import log
 from scipy.stats import binom_test
+from scipy.stats import norm
 reload(sys)
 sys.setdefaultencoding('utf-8')
 
@@ -162,7 +163,9 @@ def sign_test(results, label_1, label_2):
         label_1, label_2, significance)
 
 def two_sided_binomial(test1, test2):
-    # normal approximation: binom(p) - N(np, np^2)
+    # normal approximation: binom(p) -> N(np, np^2)
+    distribution = 
+    print approx
     return binom_test((test1, test2), p=0.5, alternative='two-sided')
     
 def naive_bayes_recased(review, freqs, results, smooth=1.0):
