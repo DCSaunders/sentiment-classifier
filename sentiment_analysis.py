@@ -10,7 +10,6 @@ import re
 import string
 import sys
 from numpy import log
-from scipy.stats import binom_test
 from scipy.stats import norm
 reload(sys)
 sys.setdefaultencoding('utf-8')
@@ -164,10 +163,12 @@ def sign_test(results, label_1, label_2):
 
 def two_sided_binomial(test1, test2):
     # normal approximation: binom(p) -> N(np, np^2)
-    distribution = 
-    print approx
-    return binom_test((test1, test2), p=0.5, alternative='two-sided')
-    
+    mean = (test1 + test2) * 0.5
+    std = np.sqrt(mean * 0.5)
+    corrected_point = min(test1, test2) + 0.5 # Continuity correction
+    approx = 2 * norm.cdf(corrected_point, loc=mean, scale=std)
+    return approx
+       
 def naive_bayes_recased(review, freqs, results, smooth=1.0):
     # Naive Bayes with optional smoothing and recasing.
     # Assume equal class priors: P(neg) = P(pos) = 0.5
