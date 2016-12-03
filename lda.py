@@ -58,13 +58,20 @@ text = ["brocolli is good to eat my brother likes to eat good brocolli, but not 
  "i often feel pressure to perform well at school, but my mother never seems to drive my brother to do better",
 "health professionals say that brocolli is good for your health"]
 np.random.seed(1234)
-K = 4
+K = 3
 train_iters = 1000
+top_words = 3
 docs = []
 topics = []
+stopwords = ('that', 'my', 'to', 'is', 'of', 'a')
 
 for string in text:
-    docs.append(Doc(string.split(), K))
+    split_str = string.split()
+    cleaned_str = []
+    for word in split_str:
+        if word not in stopwords:
+            cleaned_str.append(word)
+    docs.append(Doc(cleaned_str, K))
 for t in range(0, K):
     topics.append(Topic())
     
@@ -72,3 +79,9 @@ initialise(docs, topics, K)
 train(docs, topics, train_iters)
 for doc in docs:
     print doc.text, np.argmax(doc.topic_probs)
+for topic in topics:
+    words = topic.word_counts.keys()
+    counts = np.array([topic.word_counts[w] for w in words])
+    top = np.argpartition(counts, -top_words)[-top_words:]
+    top = top[np.argsort(counts[top])]
+    print [words[ind] for ind in top]
