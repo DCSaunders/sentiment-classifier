@@ -27,17 +27,26 @@ class Freqs(object):
         self.neg = collections.defaultdict(int)
         self.pos_stopwords = 0
         self.neg_stopwords = 0
-        
+
+class Topic(object):
+    def __init__(self):
+        self.word_counts = collections.defaultdict(int)
+        self.word_probs = collections.defaultdict(float)
+    
 class Review(object):
-    def __init__(self, rating, path):
+    def __init__(self, rating, path, topic_count):
         self.rating = rating
         self.path = path
         self.text = []
+        self.text_no_stopwords = []
         self.bag_ngrams = {1: collections.defaultdict(int),
                            2: collections.defaultdict(int),
                            3: collections.defaultdict(int)}
         self.first_in_sentence = collections.defaultdict(int)
         self.stopwords = 0
+        self.topic_assignments = []
+        self.topic_counts = np.zeros(topic_count)
+        self.topic_probs = np.zeros(topic_count)
         
     def lexicon_score(self, lexicon):
         score = 0
@@ -68,6 +77,8 @@ class Review(object):
                         self.bag_ngrams[1][seg] += 1
                         if seg in STOPWORDS:
                             self.stopwords += 1
+                        else:
+                            self.text_no_stopwords.append(seg)
         self.get_ngrams()
         
     def get_ngrams(self):
@@ -83,6 +94,7 @@ def get_args():
     parser.add_argument('-p', '--path', help='path to dir with POS and NEG review subdirs', default='data')
     parser.add_argument('-l', '--lexicon', help='path to sentiment lexicon', default='resources/sent_lexicon')
     parser.add_argument('-N', '--cv_folds', help='number of folds for N-fold cross-validation', default=10)
+    parser.add_argument('-K', '--topic_count', help='number of topics for LDA', default=10)
     args = parser.parse_args()
     return args
 
@@ -112,12 +124,12 @@ def walk_dir(review_dir):
             review_list.append(os.path.join(dirpath, filename))
     return review_list
 
-def get_review_files(review_dir, review_type, reviews):
+def get_review_files(review_dir, review_type, reviews, topic_count):
     search_dir = os.path.join(review_dir, review_type)
     review_paths = walk_dir(search_dir)
     rating = 1 if review_type == POS else -1
     for path in review_paths:
-        new_review = Review(rating, path)
+        new_review = Review(rating, path, topic_count)
         new_review.tokenize()
         reviews.append(new_review)
 
@@ -325,16 +337,64 @@ def lexicon_test(reviews, unweight_lex, weight_lex, results):
     print 'w_lex', sum(results['w_lex'].values()) / len(results['w_lex'])
     sign_test(results, 'w_lex', 'uw_lex')
         
-        
+def initialise_lda(docs, topics, K):
+    for t in range(0, K):
+        topics.append(Topic())
+    for doc in docs:
+        for word in doc.text_no_stopwords:
+            t = np.random.randint(0, K)
+            doc.topic_assignments.append(t)
+            doc.topic_counts[t] += 1
+            topics[t].word_counts[word] += 1
+
+def estimate_lda_probs(docs, topics):
+    for topic in topics:
+        total = sum(topic.word_counts.values())
+        for word, count in topic.word_counts.items():
+            topic.word_probs[word] = count / total
+    for doc in docs:
+        total = sum(doc.topic_counts)
+        for t in range(0, len(doc.topic_probs)):
+            doc.topic_probs[t] = doc.topic_counts[t] / total
+            
+def train_lda(docs, topics, train_iters):
+    for iter in range(0, train_iters):
+        estimate_lda_probs(docs, topics)
+        for doc in docs:
+            for index, word in enumerate(doc.text_no_stopwords):
+                old_topic = doc.topic_assignments[index]
+                p_w_t = np.array(
+                    [t.word_probs[word] for t in topics])
+                new_topic = np.argmax(p_w_t*doc.topic_probs)
+                doc.topic_assignments[index] = new_topic
+                doc.topic_counts[old_topic] -= 1
+                doc.topic_counts[new_topic] += 1
+                topics[old_topic].word_counts[word] -= 1
+                topics[new_topic].word_counts[word] += 1
+        if (iter % 10) == 0:
+            output_topics(topics, top_words=5)
+
+def output_topics(topics, top_words):
+    for topic in topics:
+        words = topic.word_counts.keys()
+        counts = np.array([topic.word_counts[w] for w in words])
+        top = np.argpartition(counts, -top_words)[-top_words:]
+        top = top[np.argsort(counts[top])]
+        print [words[ind] for ind in top]
+                
 if __name__ == '__main__':
     np.random.seed(1234)
     args = get_args()
     unweight_lex, weight_lex = get_sentiments(args.lexicon)
     reviews = []
+    topics = []
     results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
                'bayes_smooth': {}, 'bayes_smooth_stopwords': {},
                'bayes_recased': {}, 'bayes_bg': {}, 'bayes_tg': {}}
-    get_review_files(args.path, POS, reviews)
-    get_review_files(args.path, NEG, reviews)
-    lexicon_test(reviews, unweight_lex, weight_lex, results)
-    cross_validate(reviews, results, args.cv_folds)
+    get_review_files(args.path, POS, reviews, args.topic_count)
+    get_review_files(args.path, NEG, reviews, args.topic_count)
+    initialise_lda(reviews, topics, args.topic_count)
+    train_lda(reviews, topics, train_iters=1000)
+    output_topics(topics, top_words=5)
+    #lexicon_test(reviews, unweight_lex, weight_lex, results)
+    #cross_validate(reviews, results, args.cv_folds)
