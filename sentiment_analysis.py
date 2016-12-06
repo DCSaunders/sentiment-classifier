@@ -4,6 +4,7 @@ import argparse
 import codecs
 import collections
 import copy
+import cPickle
 import numpy as np
 import os
 import re
@@ -14,7 +15,7 @@ from scipy.stats import norm
 reload(sys)
 sys.setdefaultencoding('utf-8')
 
-STOPWORDS = set([',', '.', 'the', 'a', 'of', 'to', 'and', 'is', '"', 'in', "'s", 'that', 'it', ')', '(', 'with', 'I', 'as', 'for', 'film' 'this', 'his', 'her', 'their', 'they', 'film'])
+STOPWORDS = set([',', '.', 'the', 'a', 'an', 'of', 'to', 'and', 'is', '"', 'in', "'s", 'that', 'it', ')', '(', 'with', 'I', 'as', 'for', 'film', 'this', 'his', 'her', 'he', 'their', 'they', 'film'])
 
 GENERIC_PUNC = re.compile(r"(\w*-?\w*)(--|\.\.\.|[,!?%`./();$&@#:\"'])(\w*-?\w*)") 
 
@@ -47,6 +48,7 @@ class Review(object):
         self.topic_assignments = []
         self.topic_counts = np.zeros(topic_count)
         self.topic_probs = np.zeros(topic_count)
+        self.total_topic_count = 0
         
     def lexicon_score(self, lexicon):
         score = 0
@@ -75,11 +77,13 @@ class Review(object):
                         self.first_in_sentence[split_word[0]] += 1
                     for seg in split_word:
                         self.bag_ngrams[1][seg] += 1
+                        if index == 0:
+                            seg = seg.lower()
                         if seg in STOPWORDS:
                             self.stopwords += 1
                         else:
                             self.text_no_stopwords.append(seg)
-        self.get_ngrams()
+        #self.get_ngrams()
         
     def get_ngrams(self):
         bigrams = zip(self.text, self.text[1:])
@@ -346,6 +350,7 @@ def initialise_lda(docs, topics, K):
             doc.topic_assignments.append(t)
             doc.topic_counts[t] += 1
             topics[t].word_counts[word] += 1
+        doc.total_topic_count = sum(doc.topic_counts)
 
 def estimate_lda_probs(docs, topics):
     for topic in topics:
@@ -353,9 +358,7 @@ def estimate_lda_probs(docs, topics):
         for word, count in topic.word_counts.items():
             topic.word_probs[word] = count / total
     for doc in docs:
-        total = sum(doc.topic_counts)
-        for t in range(0, len(doc.topic_probs)):
-            doc.topic_probs[t] = doc.topic_counts[t] / total
+        doc.topic_probs = doc.topic_counts / doc.total_topic_count
             
 def train_lda(docs, topics, train_iters):
     for iter in range(0, train_iters):
@@ -363,8 +366,7 @@ def train_lda(docs, topics, train_iters):
         for doc in docs:
             for index, word in enumerate(doc.text_no_stopwords):
                 old_topic = doc.topic_assignments[index]
-                p_w_t = np.array(
-                    [t.word_probs[word] for t in topics])
+                p_w_t = np.array([t.word_probs[word] for t in topics])
                 new_topic = np.argmax(p_w_t*doc.topic_probs)
                 doc.topic_assignments[index] = new_topic
                 doc.topic_counts[old_topic] -= 1
