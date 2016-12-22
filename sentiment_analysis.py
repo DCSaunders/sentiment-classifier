@@ -12,12 +12,10 @@ import string
 import sys
 from numpy import log
 from scipy.stats import norm
+import tokenizer
 reload(sys)
 sys.setdefaultencoding('utf-8')
 
-STOPWORDS = set([',', '.', 'the', 'a', 'an', 'of', 'to', 'and', 'is', '"', 'in', "'s", 'that', 'it', ')', '(', 'with', 'I', 'as', 'for', 'film', 'this', 'his', 'her', 'he', 'their', 'they', 'film'])
-
-GENERIC_PUNC = re.compile(r"(\w*-?\w*)(--|\.\.\.|[,!?%`./();$&@#:\"'])(\w*-?\w*)") 
 
 POS = 'POS'
 NEG = 'NEG'
@@ -25,73 +23,9 @@ NEG = 'NEG'
 class Freqs(object):
     def __init__(self):
         self.pos = collections.defaultdict(int)
-        self.neg = collections.defaultdict(int)
         self.pos_stopwords = 0
+        self.neg = collections.defaultdict(int)
         self.neg_stopwords = 0
-
-class Topic(object):
-    def __init__(self):
-        self.word_counts = collections.defaultdict(int)
-        self.word_probs = collections.defaultdict(float)
-    
-class Review(object):
-    def __init__(self, rating, path, topic_count):
-        self.rating = rating
-        self.path = path
-        self.text = []
-        self.text_no_stopwords = []
-        self.bag_ngrams = {1: collections.defaultdict(int),
-                           2: collections.defaultdict(int),
-                           3: collections.defaultdict(int)}
-        self.first_in_sentence = collections.defaultdict(int)
-        self.stopwords = 0
-        self.topic_assignments = []
-        self.topic_counts = np.zeros(topic_count)
-        self.topic_probs = np.zeros(topic_count)
-        self.total_topic_count = 0
-        
-    def lexicon_score(self, lexicon):
-        score = 0
-        for token in self.bag_ngrams[1]:
-            if token in lexicon:
-                score += self.bag_ngrams[1][token] * lexicon[token]
-        if (self.rating * score > 0):
-            return 1
-        else:
-            return 0
-
-    def train_ngrams(self, freqs, to_recase, recase=False, ngram=1):
-        for tok, freq in self.bag_ngrams[ngram].items():
-            freqs[tok] += freq
-        if recase:
-            for tok, freq in self.first_in_sentence.items():
-                to_recase[tok] += freq
-    
-    def tokenize(self):
-        with codecs.open(self.path, 'r', encoding='utf-8') as f:
-            for line in f:
-                for index, word in enumerate(line.split()):
-                    split_word = space_punctuation(word)
-                    self.text.extend(split_word)
-                    if (index == 0):
-                        self.first_in_sentence[split_word[0]] += 1
-                    for seg in split_word:
-                        self.bag_ngrams[1][seg] += 1
-                        if index == 0:
-                            seg = seg.lower()
-                        if seg in STOPWORDS:
-                            self.stopwords += 1
-                        else:
-                            self.text_no_stopwords.append(seg)
-        #self.get_ngrams()
-        
-    def get_ngrams(self):
-        bigrams = zip(self.text, self.text[1:])
-        for token in bigrams:
-            self.bag_ngrams[2][token] += 1
-        trigrams = zip(self.text, self.text[1:], self.text[2:])
-        for token in trigrams:
-            self.bag_ngrams[3][token] += 1
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -102,40 +36,9 @@ def get_args():
     args = parser.parse_args()
     return args
 
-def space_punctuation(word):
-    matches = []
-    m = re.findall(GENERIC_PUNC, word)
-    for match in m:
-        if "'" in match:
-            match = adjust_apostrophe(match)
-        for seg in match:
-            if seg:
-                matches.append(seg)
-    if not matches:
-        matches = [word]
-    return matches
-
-def adjust_apostrophe(match_tuple):
-    if match_tuple[2] == 't':
-        return tuple([match_tuple[0][:-1], "n't"])
-    else:
-        return tuple([match_tuple[0], "'{}".format(match_tuple[2])])
-
-def walk_dir(review_dir):
-    review_list = []
-    for dirpath, dirnames, filenames in os.walk(review_dir):
-        for filename in filenames:
-            review_list.append(os.path.join(dirpath, filename))
-    return review_list
-
-def get_review_files(review_dir, review_type, reviews, topic_count):
+def get_review_files(review_dir, review_type, reviews):
     search_dir = os.path.join(review_dir, review_type)
-    review_paths = walk_dir(search_dir)
-    rating = 1 if review_type == POS else -1
-    for path in review_paths:
-        new_review = Review(rating, path, topic_count)
-        new_review.tokenize()
-        reviews.append(new_review)
+    tokenizer.tokenize_files(search_dir, reviews)
 
 def get_sentiments(lex_path):
     '''
@@ -235,7 +138,7 @@ def naive_bayes_stopwords(review, freqs, results, smooth=1.0):
     total_pos = sum(freqs.pos.values()) - freqs.pos_stopwords
     total_neg = sum(freqs.neg.values()) - freqs.neg_stopwords
     for word, freq in review.bag_ngrams[1].items():   
-        if not word in STOPWORDS:
+        if not word in tokenizer.STOPWORDS:
            pos_prob += freq * (log(freqs.pos[word] + smooth)
                         - log((1 + smooth) * total_pos))
            neg_prob += freq * (log(freqs.neg[word] + smooth)
@@ -389,14 +292,13 @@ if __name__ == '__main__':
     args = get_args()
     unweight_lex, weight_lex = get_sentiments(args.lexicon)
     reviews = []
-    topics = []
     results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
                'bayes_smooth': {}, 'bayes_smooth_stopwords': {},
                'bayes_recased': {}, 'bayes_bg': {}, 'bayes_tg': {}}
-    get_review_files(args.path, POS, reviews, args.topic_count)
-    get_review_files(args.path, NEG, reviews, args.topic_count)
-    initialise_lda(reviews, topics, args.topic_count)
-    train_lda(reviews, topics, train_iters=1000)
-    output_topics(topics, top_words=5)
-    #lexicon_test(reviews, unweight_lex, weight_lex, results)
-    #cross_validate(reviews, results, args.cv_folds)
+    get_review_files(args.path, POS, reviews)
+    get_review_files(args.path, NEG, reviews)
+    #initialise_lda(reviews, topics, args.topic_count)
+    #train_lda(reviews, topics, train_iters=1000)
+    #output_topics(topics, top_words=5)
+    lexicon_test(reviews, unweight_lex, weight_lex, results)
+    cross_validate(reviews, results, args.cv_folds)

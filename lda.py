@@ -2,14 +2,7 @@ from __future__ import division
 
 from collections import defaultdict
 import numpy as np
-
-class Doc(object):
-    def __init__(self, text, K):
-        # Store word topic assignments and counts/probs of topic given this document
-        self.text = text
-        self.topic_assignments = []
-        self.topic_counts = np.zeros(K)
-        self.topic_probs = np.zeros(K)
+import tokenizer
 
 class Topic(object):
     def __init__(self):
@@ -19,9 +12,9 @@ class Topic(object):
         
 def initialise(docs, topics, K):
     for doc in docs:
-        for word in doc.text:
+        for word in doc.text_no_stopwords:
             t = np.random.randint(0, K)
-            doc.topic_assignments.append(t)
+            doc.topic_words.append(t)
             doc.topic_counts[t] += 1
             topics[t].word_counts[word] += 1
 
@@ -31,8 +24,8 @@ def estimate_probs(docs, topics):
         for word, count in topic.word_counts.items():
             topic.word_probs[word] = count / total
     for doc in docs:
-        total = sum(doc.topic_counts)
-        for t in range(0, len(doc.topic_probs)):
+        total = len(doc.topic_words)
+        for t in range(0, len(topics)):
             doc.topic_probs[t] = doc.topic_counts[t] / total
             
 def train(docs, topics, train_iters):
@@ -51,31 +44,28 @@ def train(docs, topics, train_iters):
                 topics[old_topic].word_counts[word] -= 1
                 topics[new_topic].word_counts[word] += 1
 
-            
-text = ["brocolli is good to eat my brother likes to eat good brocolli, but not my mother",
- "my mother spends a lot of time driving my brother around to baseball practice",
- "some health experts suggest that driving may cause increased tension and blood pressure",
- "i often feel pressure to perform well at school, but my mother never seems to drive my brother to do better",
-"health professionals say that brocolli is good for your health"]
+        
 np.random.seed(1234)
-K = 3
+K = 4
+doc_count = 5
 train_iters = 1000
 top_words = 3
-docs = []
+reviews = []
 topics = []
-stopwords = ('that', 'my', 'to', 'is', 'of', 'a')
+alpha = 0.1 # dirichlet parameter over topics (per review)
+gamma = 0.1 # dirichlet parameter over words
 
-for string in text:
-    split_str = string.split()
-    cleaned_str = []
-    for word in split_str:
-        if word not in stopwords:
-            cleaned_str.append(word)
-    docs.append(Doc(cleaned_str, K))
+tokenizer.tokenize_files('data/POS', reviews, set())
+vocab = set()
+reviews = reviews[0:doc_count]
+for review in reviews:
+    vocab = vocab.union(review.text_no_stopwords)
+vocab_size = len(vocab)
+
 for t in range(0, K):
     topics.append(Topic())
     
-initialise(docs, topics, K)
+initialise(reviews, topics, K)
 train(docs, topics, train_iters)
 for doc in docs:
     print doc.text, np.argmax(doc.topic_probs)
