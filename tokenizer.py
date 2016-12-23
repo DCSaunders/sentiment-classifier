@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 from __future__ import division
 import argparse
-import codecs
 import collections
 import copy
 import cPickle
@@ -12,8 +11,6 @@ import string
 import sys
 from numpy import log
 from scipy.stats import norm
-reload(sys)
-sys.setdefaultencoding('utf-8')
 
 STOPWORDS = set([',', '.', 'the', 'a', 'an', 'of', 'to', 'and', 'is', '"', 'in', "'s", 'that', 'it', ')', '(', 'with', 'I', 'as', 'for', 'film', 'this', 'his', 'her', 'he', 'their', 'they'])
 
@@ -34,8 +31,8 @@ class Review(object):
         self.first_in_sentence = collections.defaultdict(int)
         self.stopwords = 0
         self.topic_words = []
-        self.topic_counts = collections.defaultdict(int)
-        self.topic_probs = collections.defaultdict(float)
+        self.topic_counts = []
+        self.topic_probs = []
         
     def lexicon_score(self, lexicon):
         score = 0
@@ -55,7 +52,7 @@ class Review(object):
                 to_recase[tok] += freq
     
     def tokenize(self, vocab):
-        with codecs.open(self.path, 'r', encoding='utf-8') as f:
+        with open(self.path, 'r') as f:
             for line in f:
                 for index, word in enumerate(line.split()):
                     split_word = space_punctuation(word)
