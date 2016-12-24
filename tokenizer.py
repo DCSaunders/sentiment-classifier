@@ -32,7 +32,6 @@ class Review(object):
         self.stopwords = 0
         self.topic_words = []
         self.topic_counts = []
-        self.topic_probs = []
         
     def lexicon_score(self, lexicon):
         score = 0

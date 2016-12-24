@@ -68,18 +68,21 @@ def sample_discrete(distribution):
             return choice
                 
 np.random.seed(1234)
-K = 5
-doc_count = 100
-train_iters = 100
-top_words = 20
+K = 10
+doc_count = 50
+train_iters = 10
+top_words = 50
 reviews = []
 topics = []
 alpha = 0.1 # dirichlet parameter over topics (per review)
 gamma = 0.1 # dirichlet parameter over words
 
-tokenizer.tokenize_files('20news-bydate-train/sci.crypt', reviews, set())
-vocab = set()
+tokenizer.tokenize_files('data/POS', reviews, set())
+reviews = reviews[0:int(0.5*doc_count)]
+tokenizer.tokenize_files('data/NEG', reviews, set())
 reviews = reviews[0:doc_count]
+vocab = set()
+
 for review in reviews:
     vocab = vocab.union(review.text_no_stopwords)
 vocab_size = len(vocab)
@@ -93,7 +96,7 @@ words_given_topics = initialise(reviews, topics, topic_word_assignments, K)
 train(reviews, topics, train_iters,
       vocab_size, topic_word_assignments, words_given_topics)
 for index, review in enumerate(reviews):
-    print index, np.argmax(review.topic_probs)
+    print index, np.argmax(review.topic_counts)
 for index, topic in enumerate(topics):
     words = topic.word_counts.keys()
     counts = np.array([topic.word_counts[w] for w in words])
