@@ -13,9 +13,9 @@ import sys
 from numpy import log
 from scipy.stats import norm
 import tokenizer
+import lda
 reload(sys)
 sys.setdefaultencoding('utf-8')
-
 
 POS = 'POS'
 NEG = 'NEG'
@@ -244,41 +244,6 @@ def lexicon_test(reviews, unweight_lex, weight_lex, results):
     print 'w_lex', sum(results['w_lex'].values()) / len(results['w_lex'])
     sign_test(results, 'w_lex', 'uw_lex')
         
-def initialise_lda(docs, topics, K):
-    for t in range(0, K):
-        topics.append(Topic())
-    for doc in docs:
-        for word in doc.text_no_stopwords:
-            t = np.random.randint(0, K)
-            doc.topic_assignments.append(t)
-            doc.topic_counts[t] += 1
-            topics[t].word_counts[word] += 1
-        doc.total_topic_count = sum(doc.topic_counts)
-
-def estimate_lda_probs(docs, topics):
-    for topic in topics:
-        total = sum(topic.word_counts.values())
-        for word, count in topic.word_counts.items():
-            topic.word_probs[word] = count / total
-    for doc in docs:
-        doc.topic_probs = doc.topic_counts / doc.total_topic_count
-            
-def train_lda(docs, topics, train_iters):
-    for iter in range(0, train_iters):
-        estimate_lda_probs(docs, topics)
-        for doc in docs:
-            for index, word in enumerate(doc.text_no_stopwords):
-                old_topic = doc.topic_assignments[index]
-                p_w_t = np.array([t.word_probs[word] for t in topics])
-                new_topic = np.argmax(p_w_t*doc.topic_probs)
-                doc.topic_assignments[index] = new_topic
-                doc.topic_counts[old_topic] -= 1
-                doc.topic_counts[new_topic] += 1
-                topics[old_topic].word_counts[word] -= 1
-                topics[new_topic].word_counts[word] += 1
-        if (iter % 10) == 0:
-            output_topics(topics, top_words=5)
-
 def output_topics(topics, top_words):
     for topic in topics:
         words = topic.word_counts.keys()
@@ -297,8 +262,6 @@ if __name__ == '__main__':
                'bayes_recased': {}, 'bayes_bg': {}, 'bayes_tg': {}}
     get_review_files(args.path, POS, reviews)
     get_review_files(args.path, NEG, reviews)
-    #initialise_lda(reviews, topics, args.topic_count)
-    #train_lda(reviews, topics, train_iters=1000)
-    #output_topics(topics, top_words=5)
+    
     lexicon_test(reviews, unweight_lex, weight_lex, results)
     cross_validate(reviews, results, args.cv_folds)

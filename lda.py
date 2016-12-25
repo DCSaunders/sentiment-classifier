@@ -6,58 +6,46 @@ import tokenizer
 
 class Topic(object):
     def __init__(self):
-        # Store counts/probs of words given topic, across all documents
+        # Store counts of words given topic, across all documents
         self.word_counts = defaultdict(int)
         
-def initialise(docs, topics, topic_word_assignments, K):
+def initialise(docs, topics, vocab, topic_word_assign, K):
     for doc in docs:
-        doc.topic_counts, doc.topic_probs = np.zeros(K), np.zeros(K)
+        doc.topic_counts = np.zeros(K)
         for word in doc.text_no_stopwords:
             t = np.random.randint(0, K)
             doc.topic_words.append(t)
             doc.topic_counts[t] += 1
             topics[t].word_counts[word] += 1
     for topic_idx, topic in enumerate(topics):
-        topic_word_assignments[topic_idx] = sum(topic.word_counts.values())
-    words_given_topics = defaultdict(list)
+        topic_word_assign[topic_idx] = sum(topic.word_counts.values())
+    words_given_topics = defaultdict(int)
     for w in vocab:
         words_given_topics[w] = np.array([t.word_counts[w] for t in topics])
     return words_given_topics
 
            
 def train(docs, topics, train_iters, vocab_size,
-          topic_word_assignments, words_given_topics):
+          topic_word_assign, words_given_topics, alpha=0.1, gamma=0.1):
     for i in range(0, train_iters):
         print 'Iteration {}'.format(i)
         for doc in docs:
             for index, word in enumerate(doc.text_no_stopwords):
-                '''
-   skd(:,d) is the vector of topic counts for that doc (1*K)
-   swk(w,:) is the vector of topic counts for that word (over all docs) (1*K) 
-   W is the overall vocabulary size (scalar)
-   sk is the vector of total counts of words assigned to each topic (1*K)
-   Probability vectors probably not needed, just count vectors.
-   Also code deals with each instance of word-assigned-to-topic at a time - 
-   first remove from relevant count matrices, then do calculation below
-        b = (alpha + skd(:,d)) .* (gamma + swk(w,:)') ./ (W*gamma + sk);
-        kk = sampDiscrete(b);     % Gibbs sample new topic assignment
-                '''
                 old_topic = doc.topic_words[index]    
                 topics[old_topic].word_counts[word] -= 1
-                topic_word_assignments[old_topic] -= 1
+                topic_word_assign[old_topic] -= 1
                 doc.topic_counts[old_topic] -= 1
                 # discrete distribution over topics
                 distrib = ((alpha + doc.topic_counts)
                            * (gamma + words_given_topics[word])
-                           / (vocab_size * gamma + topic_word_assignments))
+                           / (vocab_size * gamma + topic_word_assign))
                 new_topic = sample_discrete(distrib)
                 doc.topic_words[index] = new_topic
                 
                 doc.topic_counts[new_topic] += 1
                 topics[new_topic].word_counts[word] += 1
-                topic_word_assignments[new_topic] += 1
-        
-
+                topic_word_assign[new_topic] += 1
+                
 def sample_discrete(distribution):
     # sample from discrete count distribution
     r = sum(distribution) * np.random.uniform()
@@ -66,40 +54,78 @@ def sample_discrete(distribution):
         total += p
         if total >= r:
             return choice
-                
-np.random.seed(1234)
-K = 10
-doc_count = 50
-train_iters = 10
-top_words = 50
-reviews = []
-topics = []
-alpha = 0.1 # dirichlet parameter over topics (per review)
-gamma = 0.1 # dirichlet parameter over words
 
-tokenizer.tokenize_files('data/POS', reviews, set())
-reviews = reviews[0:int(0.5*doc_count)]
-tokenizer.tokenize_files('data/NEG', reviews, set())
-reviews = reviews[0:doc_count]
-vocab = set()
-
-for review in reviews:
-    vocab = vocab.union(review.text_no_stopwords)
-vocab_size = len(vocab)
-print vocab_size
-
-for t in range(0, K):
-    topics.append(Topic())
-topic_word_assignments = np.zeros(K)
+def run_lda(train_docs, test_docs, K):
+    train_iters = 10
+    top_words = 20
+    topics = []
+    test_topics = []
+    alpha = 0.1 # dirichlet parameter over topics (per review)
+    gamma = 0.1 # dirichlet parameter over words
     
-words_given_topics = initialise(reviews, topics, topic_word_assignments, K)
-train(reviews, topics, train_iters,
-      vocab_size, topic_word_assignments, words_given_topics)
-for index, review in enumerate(reviews):
-    print index, np.argmax(review.topic_counts)
-for index, topic in enumerate(topics):
-    words = topic.word_counts.keys()
-    counts = np.array([topic.word_counts[w] for w in words])
-    top = np.argpartition(counts, -top_words)[-top_words:]
-    top = top[np.argsort(counts[top])]
-    print index, [words[ind] for ind in top]
+    vocab = set()
+    for review in train_docs:
+        vocab = vocab.union(review.text_no_stopwords)
+    vocab_size = len(vocab)
+    print vocab_size
+
+    for t in range(0, K):
+        topics.append(Topic())
+        test_topics.append(Topic())
+    topic_word_assign = np.zeros(K)
+  
+    words_given_topics = initialise(train_docs, topics, vocab,
+                                    topic_word_assign, K)
+    train(train_docs, topics, train_iters,
+          vocab_size, topic_word_assign, words_given_topics)
+    test_topic_word_assign = np.zeros(K)
+    initialise(test_docs, test_topics, vocab, test_topic_word_assign, K)
+    
+    for doc in test_docs:
+        for i in range(0, train_iters):
+            for index, word in enumerate(doc.text_no_stopwords):
+                old_topic = doc.topic_words[index]
+                doc.topic_counts[old_topic] -= 1
+                distrib = ((alpha + doc.topic_counts)
+                           * (gamma + words_given_topics[word])
+                           / (vocab_size * gamma + topic_word_assign))
+                new_topic = sample_discrete(distrib)
+                doc.topic_words[index] = new_topic
+                doc.topic_counts[new_topic] += 1
+
+    train_count = int(len(train_docs) / 2)
+    test_count = int(len(test_docs) / 2)
+    print 'Train docs'
+    #for index, review in enumerate(train_docs):
+    #    print index, np.argmax(review.topic_counts)
+    print 'POS: {} NEG: {}'.format(
+        np.sum([d.topic_counts for d in train_docs[:train_count]], 0),
+        np.sum([d.topic_counts for d in train_docs[train_count:]], 0))
+    print 'Test docs'
+    #for index, review in enumerate(test_docs):
+    #    print index, np.argmax(review.topic_counts)
+    print 'POS: {} NEG: {}'.format(
+        np.sum([d.topic_counts for d in test_docs[:test_count]], 0),
+        np.sum([d.topic_counts for d in test_docs[test_count:]], 0))
+    for index, topic in enumerate(topics):
+        words = topic.word_counts.keys()
+        counts = np.array([topic.word_counts[w] for w in words])
+        top = np.argpartition(counts, -top_words)[-top_words:]
+        top = top[np.argsort(counts[top])]
+        print index, [words[ind] for ind in top]
+    
+
+if __name__ == '__main__':
+    # POS test dataset is sci.space
+    train_reviews = []
+    test_reviews = []
+    test_count = 50
+    tokenizer.tokenize_files('data/POS', train_reviews, set())
+    test_reviews = train_reviews[test_count:]
+    train_reviews = train_reviews[:test_count]
+    # NEG test dataset is sci.med
+    tokenizer.tokenize_files('data/NEG', train_reviews, set())
+    test_reviews.extend(
+        train_reviews[(len(train_reviews) - test_count):])
+    train_reviews = train_reviews[:(len(train_reviews) - test_count)]
+    run_lda(train_reviews, test_reviews, K=10)
