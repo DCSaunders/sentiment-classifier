@@ -27,6 +27,7 @@ def initialise(docs, topics, vocab, topic_word_assign, K):
            
 def train(docs, topics, train_iters, vocab_size,
           topic_word_assign, words_given_topics, alpha=0.1, gamma=0.1):
+    K = len(topics)
     for i in range(0, train_iters):
         print 'Iteration {}'.format(i)
         for doc in docs:
@@ -35,19 +36,20 @@ def train(docs, topics, train_iters, vocab_size,
                 topics[old_topic].word_counts[word] -= 1
                 topic_word_assign[old_topic] -= 1
                 doc.topic_counts[old_topic] -= 1
+                words_given_topics[word][old_topic] -= 1
                 # discrete distribution over topics
                 distrib = ((alpha + doc.topic_counts)
                            * (gamma + words_given_topics[word])
-                           / (vocab_size * gamma + topic_word_assign))
+                           / (vocab_size * gamma + topic_word_assign)
+                           / (K * alpha + len(doc.topic_words)))
                 new_topic = sample_discrete(distrib)
                 doc.topic_words[index] = new_topic
-                
                 doc.topic_counts[new_topic] += 1
                 topics[new_topic].word_counts[word] += 1
                 topic_word_assign[new_topic] += 1
+                words_given_topics[word][new_topic] += 1
                 
 def sample_discrete(distribution):
-    # sample from discrete count distribution
     r = sum(distribution) * np.random.uniform()
     total = 0
     for choice, p in enumerate(distribution):
@@ -55,8 +57,7 @@ def sample_discrete(distribution):
         if total >= r:
             return choice
 
-def run_lda(train_docs, test_docs, K):
-    train_iters = 10
+def run_lda(train_docs, test_docs, K, train_iters=100):
     top_words = 10
     topics = []
     test_topics = []
@@ -88,7 +89,8 @@ def run_lda(train_docs, test_docs, K):
                 doc.topic_counts[old_topic] -= 1
                 distrib = ((alpha + doc.topic_counts)
                            * (gamma + words_given_topics[word])
-                           / (vocab_size * gamma + topic_word_assign))
+                           / (vocab_size * gamma + topic_word_assign)
+                           / (K * alpha + len(doc.topic_words)))
                 new_topic = sample_discrete(distrib)
                 doc.topic_words[index] = new_topic
                 doc.topic_counts[new_topic] += 1
@@ -106,13 +108,13 @@ def run_lda(train_docs, test_docs, K):
     print 'POS: {} NEG: {}'.format(test_pos / sum(test_pos),
                                    test_neg / sum(test_neg))
     for index, topic in enumerate(topics):
-        words = topic.word_counts.keys()
-        counts = np.array([topic.word_counts[w] for w in words])
-        top = np.argpartition(counts, -top_words)[-top_words:]
-        top = top[np.argsort(counts[top])]
-        print index, [words[ind] for ind in top]
+        top_topic_words = sorted(topic.word_counts,
+                                 key=lambda x: topic.word_counts[x],
+                                 reverse=True)[:top_words]
+        print index, ' '.join(top_topic_words)
     
 if __name__ == '__main__':
+    np.random.seed(1234)
     # POS test dataset is sci.space
     train_reviews = []
     test_reviews = []
@@ -124,4 +126,4 @@ if __name__ == '__main__':
     tokenizer.tokenize_files('data/NEG', train_reviews, set())
     test_reviews.extend(train_reviews[-test_count:])
     train_reviews = train_reviews[:-test_count]
-    run_lda(train_reviews, test_reviews, K=3)
+    run_lda(train_reviews, test_reviews, K=10, train_iters=10)
