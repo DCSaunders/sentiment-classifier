@@ -12,7 +12,7 @@ import sys
 from numpy import log
 from scipy.stats import norm
 
-STOPWORDS = set([',', 'the', '.', 'a', 'and', 'of', 'to', 'is', 'in', "'s", '"', 'that', 'it', 'as', 'his', ')', '(', 'with', 'he', 'for', 'film', 'this', 'but', 'I', 'on', 'an', 'are', 'by', 'who', 'not', 'has', 'be', 'from', "n't", 'you', 'at', 'one', 'was', 'have', 'movie', 'all', 'they', 'which', 'like', 'him', 'do', 'more', 'about', 'so', 'there', 'her', 'when', 'we', 'out', 'up', 'does'])
+STOPWORDS = set([',', 'the', '.', 'a', 'and', 'of', 'to', 'is', 'in', "'s", '"', 'that', 'it', 'as', 'his', ')', '(', 'with', 'he', 'for', 'film', 'this', 'but', 'I', 'on', 'an', 'are', 'by', 'who', 'not', 'has', 'be', 'from', "n't", 'you', 'at', 'one', 'was', 'have', 'movie', 'all', 'they', 'which', 'like', 'him', 'do', 'more', 'about', 'so', 'there', 'her', 'when', 'we', 'out', 'up', 'does', 'she', 'their'])
 
 GENERIC_PUNC = re.compile(r"(\w*-?\w*)(--|\.\.\.|[,!?%`./();$&@#:\"'])(\w*-?\w*)") 
 

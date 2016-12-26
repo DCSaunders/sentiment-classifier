@@ -32,7 +32,7 @@ def get_args():
     parser.add_argument('-p', '--path', help='path to dir with POS and NEG review subdirs', default='data')
     parser.add_argument('-l', '--lexicon', help='path to sentiment lexicon', default='resources/sent_lexicon')
     parser.add_argument('-N', '--cv_folds', help='number of folds for N-fold cross-validation', default=10)
-    parser.add_argument('-K', '--topic_count', help='number of topics for LDA', default=10)
+    parser.add_argument('-K', '--topic_count', help='number of topics for LDA', default=5)
     args = parser.parse_args()
     return args
 
@@ -146,7 +146,7 @@ def test(tests, unigrams, bigrams, trigrams, results):
         naive_bayes(review, bigrams, results['bayes_bg'], ngram=2)
         naive_bayes(review, trigrams, results['bayes_tg'], ngram=3)
 
-def cross_validate(reviews, results, cv_folds):
+def cross_validate(reviews, results, cv_folds, topic_count):
     count = len(reviews) / 2 # assume equal number pos/neg reviews
     labels = ['n_bayes', 'bayes_smooth', 'bayes_smooth_stopwords', 'bayes_bg', 'bayes_tg']
     fold_size = count / cv_folds
@@ -156,8 +156,10 @@ def cross_validate(reviews, results, cv_folds):
         high = (fold + 1) * fold_size
         train_reviews, test_reviews = split_train_test(
             reviews, low, high)
-        unigrams, bigrams, trigrams = train(train_reviews, results)
-        test(test_reviews, unigrams, bigrams, trigrams, results)
+        run_lda(train_reviews, test_reviews, results['lda'],
+                topic_count)
+        #unigrams, bigrams, trigrams = train(train_reviews, results)
+        #test(test_reviews, unigrams, bigrams, trigrams, results)
         #sign_test(results, 'n_bayes', 'w_lex')
         #sign_test(results, 'bayes_smooth', 'uw_lex')
         #sign_test(results, 'bayes_smooth', 'w_lex')
@@ -170,6 +172,33 @@ def cross_validate(reviews, results, cv_folds):
             results[label] = {}
     print accuracies
 
+def run_lda(train_reviews, test_reviews, results, topic_count):
+    lda.run_lda(train_reviews, test_reviews, topic_count,
+                train_iters=10)
+    neg_prob = pos_prob = 0.0
+    pos_topics = np.zeros(topic_count)
+    neg_topics = np.zeros(topic_count)
+    for r in train_reviews:
+        if r.rating == 1:
+            pos_topics += r.topic_counts
+        else:
+            neg_topics += r.topic_counts
+    total_pos = np.sum(pos_topics)
+    total_neg = np.sum(neg_topics)
+    smooth = 1
+    for r in test_reviews:
+        for index, count in enumerate(r.topic_counts):
+            pos_prob += count * (log(pos_topics[index] + smooth)
+                                - log((1 + smooth) * total_pos))
+            neg_prob += count * (log(neg_topics[index] + smooth)
+                                - log((1 + smooth) * total_neg))
+        if pos_prob == neg_prob:
+            pos_prob, neg_prob = np.random.rand(2)
+        if (pos_prob - neg_prob) * r.rating > 0.0:
+            results[r] = 1
+        else:
+            results[r] = 0
+        
 def lexicon_test(reviews, unweight_lex, weight_lex, results):
     for review in reviews:
         results['uw_lex'][review] = review.lexicon_score(unweight_lex)
@@ -195,9 +224,9 @@ if __name__ == '__main__':
     reviews = []
     results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
                'bayes_smooth': {}, 'bayes_smooth_stopwords': {},
-               'bayes_bg': {}, 'bayes_tg': {}}
+               'bayes_bg': {}, 'bayes_tg': {}, 'lda': {}}
     vocab = set()
     get_review_files(args.path, POS, reviews, vocab)
     get_review_files(args.path, NEG, reviews, vocab)
     lexicon_test(reviews, unweight_lex, weight_lex, results)
-    cross_validate(reviews, results, args.cv_folds)
+    cross_validate(reviews, results, args.cv_folds, args.topic_count)

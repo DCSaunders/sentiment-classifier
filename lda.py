@@ -94,19 +94,6 @@ def run_lda(train_docs, test_docs, K, train_iters=100):
                 new_topic = sample_discrete(distrib)
                 doc.topic_words[index] = new_topic
                 doc.topic_counts[new_topic] += 1
-
-    train_count = int(len(train_docs) / 2)
-    test_count = int(len(test_docs) / 2)
-    print 'Train docs'
-    train_pos = np.sum([d.topic_counts for d in train_docs[:train_count]], 0)
-    train_neg = np.sum([d.topic_counts for d in train_docs[train_count:]], 0)
-    test_pos = np.sum([d.topic_counts for d in test_docs[:test_count]], 0)
-    test_neg = np.sum([d.topic_counts for d in test_docs[test_count:]], 0)
-    print 'POS: {} NEG: {}'.format(train_pos / sum(train_pos),
-                                   train_neg / sum(train_neg))
-    print 'Test docs'
-    print 'POS: {} NEG: {}'.format(test_pos / sum(test_pos),
-                                   test_neg / sum(test_neg))
     for index, topic in enumerate(topics):
         top_topic_words = sorted(topic.word_counts,
                                  key=lambda x: topic.word_counts[x],
