@@ -57,7 +57,7 @@ def sample_discrete(distribution):
 
 def run_lda(train_docs, test_docs, K):
     train_iters = 10
-    top_words = 20
+    top_words = 10
     topics = []
     test_topics = []
     alpha = 0.1 # dirichlet parameter over topics (per review)
@@ -96,17 +96,15 @@ def run_lda(train_docs, test_docs, K):
     train_count = int(len(train_docs) / 2)
     test_count = int(len(test_docs) / 2)
     print 'Train docs'
-    #for index, review in enumerate(train_docs):
-    #    print index, np.argmax(review.topic_counts)
-    print 'POS: {} NEG: {}'.format(
-        np.sum([d.topic_counts for d in train_docs[:train_count]], 0),
-        np.sum([d.topic_counts for d in train_docs[train_count:]], 0))
+    train_pos = np.sum([d.topic_counts for d in train_docs[:train_count]], 0)
+    train_neg = np.sum([d.topic_counts for d in train_docs[train_count:]], 0)
+    test_pos = np.sum([d.topic_counts for d in test_docs[:test_count]], 0)
+    test_neg = np.sum([d.topic_counts for d in test_docs[test_count:]], 0)
+    print 'POS: {} NEG: {}'.format(train_pos / sum(train_pos),
+                                   train_neg / sum(train_neg))
     print 'Test docs'
-    #for index, review in enumerate(test_docs):
-    #    print index, np.argmax(review.topic_counts)
-    print 'POS: {} NEG: {}'.format(
-        np.sum([d.topic_counts for d in test_docs[:test_count]], 0),
-        np.sum([d.topic_counts for d in test_docs[test_count:]], 0))
+    print 'POS: {} NEG: {}'.format(test_pos / sum(test_pos),
+                                   test_neg / sum(test_neg))
     for index, topic in enumerate(topics):
         words = topic.word_counts.keys()
         counts = np.array([topic.word_counts[w] for w in words])
@@ -114,18 +112,16 @@ def run_lda(train_docs, test_docs, K):
         top = top[np.argsort(counts[top])]
         print index, [words[ind] for ind in top]
     
-
 if __name__ == '__main__':
     # POS test dataset is sci.space
     train_reviews = []
     test_reviews = []
     test_count = 50
     tokenizer.tokenize_files('data/POS', train_reviews, set())
-    test_reviews = train_reviews[test_count:]
-    train_reviews = train_reviews[:test_count]
+    test_reviews = train_reviews[-test_count:]
+    train_reviews = train_reviews[:-test_count]
     # NEG test dataset is sci.med
     tokenizer.tokenize_files('data/NEG', train_reviews, set())
-    test_reviews.extend(
-        train_reviews[(len(train_reviews) - test_count):])
-    train_reviews = train_reviews[:(len(train_reviews) - test_count)]
-    run_lda(train_reviews, test_reviews, K=10)
+    test_reviews.extend(train_reviews[-test_count:])
+    train_reviews = train_reviews[:-test_count]
+    run_lda(train_reviews, test_reviews, K=3)

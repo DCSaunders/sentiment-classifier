@@ -36,9 +36,9 @@ def get_args():
     args = parser.parse_args()
     return args
 
-def get_review_files(review_dir, review_type, reviews):
+def get_review_files(review_dir, review_type, reviews, vocab):
     search_dir = os.path.join(review_dir, review_type)
-    tokenizer.tokenize_files(search_dir, reviews)
+    tokenizer.tokenize_files(search_dir, reviews, vocab)
 
 def get_sentiments(lex_path):
     '''
@@ -88,41 +88,21 @@ def two_sided_binomial(test1, test2):
     approx = 2 * norm.cdf(corrected_point, loc=mean, scale=std)
     return approx
        
-def naive_bayes_recased(review, freqs, results, smooth=1.0):
-    # Naive Bayes with optional smoothing and recasing.
+def naive_bayes(review, freqs, results, inc_stopwords=True, smooth=1.0,
+                ngram=1):
     # Assume equal class priors: P(neg) = P(pos) = 0.5
     neg_prob = pos_prob = 0.0
     total_pos = sum(freqs.pos.values())
     total_neg = sum(freqs.neg.values())
-    recase = collections.defaultdict(int)
-    for tok, freq in review.first_in_sentence.items():
-        recase[tok] = freq
-    for word, freq in review.bag_ngrams[1].items():
-        if recase[word] > 0: # lowercase instances accounted for separately
-            word = word.lower() 
-            recase[word] -= freq
-        pos_prob += freq * (log(freqs.pos[word] + smooth)
-                     - log((1 + smooth) * total_pos))
-        neg_prob += freq * (log(freqs.neg[word] + smooth)
-                     - log((1 + smooth) * total_neg))
-    if pos_prob == neg_prob:
-        pos_prob, neg_prob = np.random.rand(2)
-    if (pos_prob - neg_prob) * review.rating > 0.0:
-        results[review] = 1
-    else:
-        results[review] = 0
-
-def naive_bayes(review, freqs, results, smooth=1.0, ngram=1):
-    # Naive Bayes with optional smoothing.
-    # Assume equal class priors: P(neg) = P(pos) = 0.5
-    neg_prob = pos_prob = 0.0
-    total_pos = sum(freqs.pos.values())
-    total_neg = sum(freqs.neg.values())
+    if not inc_stopwords:
+        total_pos -= freqs.pos_stopwords
+        total_neg -= freqs.neg_stopwords
     for tok, freq in review.bag_ngrams[ngram].items():
-        pos_prob += freq * (log(freqs.pos[tok] + smooth)
-                     - log((1 + smooth) * total_pos))
-        neg_prob += freq * (log(freqs.neg[tok] + smooth)
-                     - log((1 + smooth) * total_neg))
+        if inc_stopwords or not tok in tokenizer.STOPWORDS:
+            pos_prob += freq * (log(freqs.pos[tok] + smooth)
+                                - log((1 + smooth) * total_pos))
+            neg_prob += freq * (log(freqs.neg[tok] + smooth)
+                                - log((1 + smooth) * total_neg))
     if pos_prob == neg_prob:
             pos_prob, neg_prob = np.random.rand(2)
     if (pos_prob - neg_prob) * review.rating > 0.0:
@@ -130,60 +110,22 @@ def naive_bayes(review, freqs, results, smooth=1.0, ngram=1):
     else:
         results[review] = 0
                 
-
-def naive_bayes_stopwords(review, freqs, results, smooth=1.0):
-    # Naive Bayes with optional smoothing and stopwords.
-    # Assume equal class priors: P(neg) = P(pos) = 0.5
-    neg_prob = pos_prob = 0.0
-    total_pos = sum(freqs.pos.values()) - freqs.pos_stopwords
-    total_neg = sum(freqs.neg.values()) - freqs.neg_stopwords
-    for word, freq in review.bag_ngrams[1].items():   
-        if not word in tokenizer.STOPWORDS:
-           pos_prob += freq * (log(freqs.pos[word] + smooth)
-                        - log((1 + smooth) * total_pos))
-           neg_prob += freq * (log(freqs.neg[word] + smooth)
-                        - log((1 + smooth) * total_neg))
-    if pos_prob == neg_prob:
-            pos_prob, neg_prob = np.random.rand(2)
-    if (pos_prob - neg_prob) * review.rating > 0.0:
-        results[review] = 1
-    else:
-        results[review] = 0
-
-
 def train(train_reviews, results):
     unigrams = Freqs()
     bigrams = Freqs()
     trigrams = Freqs()
-    to_recase = Freqs()
-    recased_freqs = Freqs()
     for review in train_reviews:
         if review.rating == 1:
-            review.train_ngrams(unigrams.pos, to_recase.pos,
-                                recase=True, ngram=1)
-            review.train_ngrams(bigrams.pos, None, ngram=2)
-            review.train_ngrams(trigrams.pos, None, ngram=3)
+            review.train_ngrams(unigrams.pos, ngram=1)
+            review.train_ngrams(bigrams.pos, ngram=2)
+            review.train_ngrams(trigrams.pos, ngram=3)
             unigrams.pos_stopwords += review.stopwords
         else:
-            review.train_ngrams(unigrams.neg, to_recase.neg,
-                                recase=True, ngram=1)
-            review.train_ngrams(bigrams.neg, None, ngram=2)
-            review.train_ngrams(trigrams.neg, None, ngram=3)
+            review.train_ngrams(unigrams.neg, ngram=1)
+            review.train_ngrams(bigrams.neg, ngram=2)
+            review.train_ngrams(trigrams.neg, ngram=3)
             unigrams.neg_stopwords += review.stopwords
-    recased_freqs.pos = recase(to_recase.pos, unigrams.pos)
-    recased_freqs.neg = recase(to_recase.neg, unigrams.neg)
-    return unigrams, bigrams, trigrams, recased_freqs
-
-
-def recase(to_recase, freqs):
-    recased_freqs = collections.defaultdict(int)
-    for tok, freq in freqs.items():
-        if to_recase[tok] == freq:
-            recased_freqs[tok.lower] = freq + freqs[tok.lower()]
-        else:
-            to_recase.pop(tok)
-            recased_freqs[tok] = freq
-    return recased_freqs
+    return unigrams, bigrams, trigrams
 
 def split_train_test(reviews, low, high):
     train, test = [], []
@@ -195,40 +137,32 @@ def split_train_test(reviews, low, high):
             train.append(review)
     return train, test
 
-def test(tests, unigrams, bigrams, trigrams, recased_freqs, results):
+def test(tests, unigrams, bigrams, trigrams, results):
     for review in tests:
         naive_bayes(review, unigrams, results['n_bayes'], smooth=0.0)
-        naive_bayes(review, unigrams, results['bayes_smooth'], smooth=1.0)
-        naive_bayes_recased(
-            review, recased_freqs, results['bayes_recased'], smooth=1.0)
-        naive_bayes_stopwords(review, unigrams,
-                              results['bayes_smooth_stopwords'], smooth=1.0)
-        naive_bayes(review, bigrams, results['bayes_bg'], smooth=1.0, ngram=2)
-        naive_bayes(review, trigrams, results['bayes_tg'], smooth=1.0, ngram=3)
-
+        naive_bayes(review, unigrams, results['bayes_smooth'])
+        naive_bayes(review, unigrams, results['bayes_smooth_stopwords'],
+                    inc_stopwords=False)
+        naive_bayes(review, bigrams, results['bayes_bg'], ngram=2)
+        naive_bayes(review, trigrams, results['bayes_tg'], ngram=3)
 
 def cross_validate(reviews, results, cv_folds):
     count = len(reviews) / 2 # assume equal number pos/neg reviews
-    labels = ['n_bayes', 'bayes_smooth', 'bayes_recased', 'bayes_smooth_stopwords', 'bayes_bg', 'bayes_tg']
+    labels = ['n_bayes', 'bayes_smooth', 'bayes_smooth_stopwords', 'bayes_bg', 'bayes_tg']
     fold_size = count / cv_folds
     accuracies = collections.defaultdict(list)
     for fold in range(cv_folds):
         low = fold * fold_size
         high = (fold + 1) * fold_size
-        train_reviews, test_reviews = split_train_test(reviews, low, high)
-        unigrams, bigrams, trigrams, recased_freqs = train(
-            train_reviews, results)
-        test(test_reviews, unigrams, bigrams, trigrams, recased_freqs, results)
+        train_reviews, test_reviews = split_train_test(
+            reviews, low, high)
+        unigrams, bigrams, trigrams = train(train_reviews, results)
+        test(test_reviews, unigrams, bigrams, trigrams, results)
         #sign_test(results, 'n_bayes', 'w_lex')
         #sign_test(results, 'bayes_smooth', 'uw_lex')
         #sign_test(results, 'bayes_smooth', 'w_lex')
         #sign_test(results, 'bayes_smooth', 'n_bayes')
         #sign_test(results, 'bayes_smooth', 'bayes_smooth_stopwords')
-        #sign_test(results, 'bayes_smooth', 'bayes_recased')
-        #sign_test(results, 'bayes_recased', 'bayes_smooth_stopwords')
-        #sign_test(results, 'bayes_recased', 'w_lex')
-        #sign_test(results, 'bayes_recased', 'uw_lex')
-        #sign_test(results, 'bayes_recased', 'uw_lex')
         for label in labels:
             accuracy = sum(results[label].values()) / len(results[label])
             print label, accuracy
@@ -240,8 +174,10 @@ def lexicon_test(reviews, unweight_lex, weight_lex, results):
     for review in reviews:
         results['uw_lex'][review] = review.lexicon_score(unweight_lex)
         results['w_lex'][review] = review.lexicon_score(weight_lex)
-    print 'uw_lex', sum(results['uw_lex'].values()) / len(results['uw_lex'])
-    print 'w_lex', sum(results['w_lex'].values()) / len(results['w_lex'])
+    print 'uw_lex', (sum(results['uw_lex'].values())
+                     / len(results['uw_lex']))
+    print 'w_lex', (sum(results['w_lex'].values())
+                    / len(results['w_lex']))
     sign_test(results, 'w_lex', 'uw_lex')
         
 def output_topics(topics, top_words):
@@ -259,9 +195,9 @@ if __name__ == '__main__':
     reviews = []
     results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
                'bayes_smooth': {}, 'bayes_smooth_stopwords': {},
-               'bayes_recased': {}, 'bayes_bg': {}, 'bayes_tg': {}}
-    get_review_files(args.path, POS, reviews)
-    get_review_files(args.path, NEG, reviews)
-    
+               'bayes_bg': {}, 'bayes_tg': {}}
+    vocab = set()
+    get_review_files(args.path, POS, reviews, vocab)
+    get_review_files(args.path, NEG, reviews, vocab)
     lexicon_test(reviews, unweight_lex, weight_lex, results)
     cross_validate(reviews, results, args.cv_folds)

@@ -12,7 +12,7 @@ import sys
 from numpy import log
 from scipy.stats import norm
 
-STOPWORDS = set([',', '.', 'the', 'a', 'an', 'of', 'to', 'and', 'is', '"', 'in', "'s", 'that', 'it', ')', '(', 'with', 'I', 'as', 'for', 'film', 'this', 'his', 'her', 'he', 'their', 'they'])
+STOPWORDS = set([',', 'the', '.', 'a', 'and', 'of', 'to', 'is', 'in', "'s", '"', 'that', 'it', 'as', 'his', ')', '(', 'with', 'he', 'for', 'film', 'this', 'but', 'I', 'on', 'an', 'are', 'by', 'who', 'not', 'has', 'be', 'from', "n't", 'you', 'at', 'one', 'was', 'have', 'movie', 'all', 'they', 'which', 'like', 'him', 'do', 'more', 'about', 'so', 'there', 'her', 'when', 'we', 'out', 'up', 'does'])
 
 GENERIC_PUNC = re.compile(r"(\w*-?\w*)(--|\.\.\.|[,!?%`./();$&@#:\"'])(\w*-?\w*)") 
 
@@ -43,12 +43,9 @@ class Review(object):
         else:
             return 0
 
-    def train_ngrams(self, freqs, to_recase, recase=False, ngram=1):
+    def train_ngrams(self, freqs, ngram=1):
         for tok, freq in self.bag_ngrams[ngram].items():
             freqs[tok] += freq
-        if recase:
-            for tok, freq in self.first_in_sentence.items():
-                to_recase[tok] += freq
     
     def tokenize(self, vocab):
         with open(self.path, 'r') as f:
@@ -59,9 +56,9 @@ class Review(object):
                     if (index == 0):
                         self.first_in_sentence[split_word[0]] += 1
                     for seg in split_word:
-                        self.bag_ngrams[1][seg] += 1
-                        if index == 0:
+                        if seg.upper() != seg:
                             seg = seg.lower()
+                        self.bag_ngrams[1][seg] += 1
                         if seg in STOPWORDS:
                             self.stopwords += 1
                         else:
@@ -109,9 +106,39 @@ def walk_dir(path_to_dir):
             path_list.append(os.path.join(dirpath, filename))
     return path_list
 
+def get_stopwords(docs):
+    stopwords = []
+    pos_toks = collections.defaultdict(int)
+    neg_toks = collections.defaultdict(int)
+    info = collections.defaultdict(float)
+
+    for doc in docs:
+        num = int(os.path.basename(doc.path)[2:5])
+        if num < 100:
+            for tok in doc.bag_ngrams[1]:
+                if POS in doc.path:
+                    pos_toks[tok] += doc.bag_ngrams[1][tok]
+                else:
+                    neg_toks[tok] += doc.bag_ngrams[1][tok]
+    pos_total = sum(pos_toks.values())
+    neg_total = sum(pos_toks.values())
+    vocab = set(pos_toks.keys()).union(set(neg_toks.keys()))
+    for tok in vocab:
+        info[tok] = (log(1 + pos_toks[tok] / pos_total)
+                     + log(1 + neg_toks[tok] / neg_total)
+                     - 2 * log((pos_toks[tok] + neg_toks[tok])
+                               / (pos_total + neg_total)))
+    sorted_info = sorted(info, key=lambda x: info[x])
+    for tok in sorted_info[:100]:
+        print tok, info[tok]
+    for tok in sorted_info[-100:]:
+        print tok, info[tok]
+    print '[{}]'.format("', '".join(sorted_info[:80]))
+        
 def tokenize_files(doc_dir, docs, vocab):
     doc_paths = walk_dir(doc_dir)
     for path in doc_paths:
         new_doc = Review(path)
         new_doc.tokenize(vocab)
         docs.append(new_doc)
+    #get_stopwords(docs)
