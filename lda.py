@@ -11,6 +11,7 @@ class Topic(object):
         
 def initialise(docs, topics, vocab, topic_word_assign, K):
     for doc in docs:
+        doc.topic_words = []
         doc.topic_counts = np.zeros(K)
         for word in doc.text_no_stopwords:
             t = np.random.randint(0, K)
@@ -68,7 +69,7 @@ def run_lda(train_docs, test_docs, K, train_iters=100):
     for review in train_docs:
         vocab = vocab.union(review.text_no_stopwords)
     vocab_size = len(vocab)
-    print vocab_size
+    print 'LDA with vocab size {}'.format(vocab_size)
 
     for t in range(0, K):
         topics.append(Topic())

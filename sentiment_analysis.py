@@ -148,7 +148,7 @@ def test(tests, unigrams, bigrams, trigrams, results):
 
 def cross_validate(reviews, results, cv_folds, topic_count):
     count = len(reviews) / 2 # assume equal number pos/neg reviews
-    labels = ['n_bayes', 'bayes_smooth', 'bayes_smooth_stopwords', 'bayes_bg', 'bayes_tg']
+    labels = ['n_bayes', 'bayes_smooth', 'bayes_smooth_stopwords', 'bayes_bg', 'bayes_tg', 'lda']
     fold_size = count / cv_folds
     accuracies = collections.defaultdict(list)
     for fold in range(cv_folds):
@@ -166,10 +166,11 @@ def cross_validate(reviews, results, cv_folds, topic_count):
         #sign_test(results, 'bayes_smooth', 'n_bayes')
         #sign_test(results, 'bayes_smooth', 'bayes_smooth_stopwords')
         for label in labels:
-            accuracy = sum(results[label].values()) / len(results[label])
-            print label, accuracy
-            accuracies[label].append(accuracy)
-            results[label] = {}
+            if results[label]:
+                accuracy = sum(results[label].values()) / len(results[label])
+                print label, accuracy
+                accuracies[label].append(accuracy)
+                results[label] = {}
     print accuracies
 
 def run_lda(train_reviews, test_reviews, results, topic_count):
