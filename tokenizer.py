@@ -12,7 +12,7 @@ import sys
 from numpy import log
 from scipy.stats import norm
 
-STOPWORDS = set([',', 'the', '.', 'a', 'and', 'of', 'to', 'is', 'in', "'s", '"', 'that', 'it', 'as', 'his', ')', '(', 'with', 'he', 'for', 'film', 'this', 'but', 'I', 'on', 'an', 'are', 'by', 'who', 'not', 'has', 'be', 'from', "n't", 'you', 'at', 'one', 'was', 'have', 'movie', 'all', 'they', 'which', 'like', 'him', 'do', 'more', 'about', 'so', 'there', 'her', 'when', 'we', 'out', 'up', 'does', 'she', 'their'])
+STOPWORDS = set([',', 'the', '.', 'a', 'and', 'of', 'to', 'is', 'in', "'s", '"', "'", '`', ';', '--', 'that', 'it', 'as', 'his', ')', '(', 'with', 'he', 'for', 'film', 'this', 'but', 'I', 'on', 'an', 'are', 'by', 'who', 'not', 'has', 'be', 'from', "n't", 'you', 'at', 'one', 'was', 'have', 'movie', 'all', 'they', 'which', 'like', 'him', 'do', 'more', 'about', 'so', 'there', 'her', 'when', 'we', 'out', 'up', 'does', 'she', 'their', 'its'])
 
 GENERIC_PUNC = re.compile(r"(\w*-?\w*)(--|\.\.\.|[,!?%`./();$&@#:\"'])(\w*-?\w*)") 
 
@@ -47,23 +47,22 @@ class Review(object):
         for tok, freq in self.bag_ngrams[ngram].items():
             freqs[tok] += freq
     
-    def tokenize(self, vocab):
+    def tokenize(self, lda_vocab):
         with open(self.path, 'r') as f:
             for line in f:
                 for index, word in enumerate(line.split()):
                     split_word = space_punctuation(word)
-                    self.text.extend(split_word)
                     if (index == 0):
                         self.first_in_sentence[split_word[0]] += 1
                     for seg in split_word:
                         if seg.upper() != seg:
                             seg = seg.lower()
+                            if seg not in STOPWORDS:
+                                lda_vocab[seg] += 1
                         self.bag_ngrams[1][seg] += 1
+                        self.text.append(seg)
                         if seg in STOPWORDS:
                             self.stopwords += 1
-                        else:
-                            self.text_no_stopwords.append(seg)
-                            vocab.add(seg)
         self.get_ngrams()
         
     def get_ngrams(self):
@@ -111,7 +110,6 @@ def get_stopwords(docs):
     pos_toks = collections.defaultdict(int)
     neg_toks = collections.defaultdict(int)
     info = collections.defaultdict(float)
-
     for doc in docs:
         num = int(os.path.basename(doc.path)[2:5])
         if num < 100:
@@ -135,10 +133,10 @@ def get_stopwords(docs):
         print tok, info[tok]
     print '[{}]'.format("', '".join(sorted_info[:80]))
         
-def tokenize_files(doc_dir, docs, vocab):
+def tokenize_files(doc_dir, docs, lda_vocab):
     doc_paths = walk_dir(doc_dir)
     for path in doc_paths:
         new_doc = Review(path)
-        new_doc.tokenize(vocab)
+        new_doc.tokenize(lda_vocab)
         docs.append(new_doc)
     #get_stopwords(docs)

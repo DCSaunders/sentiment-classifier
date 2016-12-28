@@ -31,15 +31,26 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--path', help='path to dir with POS and NEG review subdirs', default='data')
     parser.add_argument('-l', '--lexicon', help='path to sentiment lexicon', default='resources/sent_lexicon')
-    parser.add_argument('-N', '--cv_folds', help='number of folds for N-fold cross-validation', default=10)
-    parser.add_argument('-K', '--topic_count', help='number of topics for LDA', default=5)
+    parser.add_argument('-N', '--cv_folds', type=int, help='number of folds for N-fold cross-validation', default=10)
+    parser.add_argument('-K', '--topic_count', type=int, help='number of topics for LDA', default=5)
     args = parser.parse_args()
     return args
 
-def get_review_files(review_dir, review_type, reviews, vocab):
-    search_dir = os.path.join(review_dir, review_type)
-    tokenizer.tokenize_files(search_dir, reviews, vocab)
-
+def get_review_files(review_dir, reviews, vocab):
+    # Get all review files and complete vocab counts
+    for review_type in (POS, NEG):
+        search_dir = os.path.join(review_dir, review_type)
+        tokenizer.tokenize_files(search_dir, reviews, vocab)
+    preprocess_reviews(reviews, vocab)
+        
+def preprocess_reviews(reviews, vocab):
+    common_vocab = collections.Counter(
+        {w: count for w, count in vocab.items() if count > 3})
+    for review in reviews:
+        for seg in review.text:
+            if seg in common_vocab:
+                review.text_no_stopwords.append(seg)
+    
 def get_sentiments(lex_path):
     '''
     Args:
@@ -175,8 +186,7 @@ def cross_validate(reviews, results, cv_folds, topic_count):
 
 def run_lda(train_reviews, test_reviews, results, topic_count):
     lda.run_lda(train_reviews, test_reviews, topic_count,
-                train_iters=10)
-    neg_prob = pos_prob = 0.0
+                train_iters=20)
     pos_topics = np.zeros(topic_count)
     neg_topics = np.zeros(topic_count)
     for r in train_reviews:
@@ -188,12 +198,14 @@ def run_lda(train_reviews, test_reviews, results, topic_count):
     total_neg = np.sum(neg_topics)
     smooth = 1
     for r in test_reviews:
+        neg_prob = pos_prob = 0.0
         for index, count in enumerate(r.topic_counts):
-            pos_prob += count * (log(pos_topics[index] + smooth)
-                                - log((1 + smooth) * total_pos))
-            neg_prob += count * (log(neg_topics[index] + smooth)
-                                - log((1 + smooth) * total_neg))
+            pos_prob += count * (log(pos_topics[index])
+                                - log(total_pos))
+            neg_prob += count * (log(neg_topics[index])
+                                - log(total_neg))
         if pos_prob == neg_prob:
+            print 'Equal probabilities - choose class at random'
             pos_prob, neg_prob = np.random.rand(2)
         if (pos_prob - neg_prob) * r.rating > 0.0:
             results[r] = 1
@@ -226,8 +238,7 @@ if __name__ == '__main__':
     results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
                'bayes_smooth': {}, 'bayes_smooth_stopwords': {},
                'bayes_bg': {}, 'bayes_tg': {}, 'lda': {}}
-    vocab = set()
-    get_review_files(args.path, POS, reviews, vocab)
-    get_review_files(args.path, NEG, reviews, vocab)
+    vocab = collections.Counter()
+    get_review_files(args.path, reviews, vocab)
     lexicon_test(reviews, unweight_lex, weight_lex, results)
     cross_validate(reviews, results, args.cv_folds, args.topic_count)

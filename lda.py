@@ -70,7 +70,6 @@ def run_lda(train_docs, test_docs, K, train_iters=100):
         vocab = vocab.union(review.text_no_stopwords)
     vocab_size = len(vocab)
     print 'LDA with vocab size {}'.format(vocab_size)
-
     for t in range(0, K):
         topics.append(Topic())
         test_topics.append(Topic())
