@@ -47,7 +47,7 @@ class Review(object):
         for tok, freq in self.bag_ngrams[ngram].items():
             freqs[tok] += freq
     
-    def tokenize(self, lda_vocab):
+    def tokenize(self):
         with open(self.path, 'r') as f:
             for line in f:
                 for index, word in enumerate(line.split()):
@@ -57,8 +57,6 @@ class Review(object):
                     for seg in split_word:
                         if seg.upper() != seg:
                             seg = seg.lower()
-                            if seg not in STOPWORDS:
-                                lda_vocab[seg] += 1
                         self.bag_ngrams[1][seg] += 1
                         self.text.append(seg)
                         if seg in STOPWORDS:
@@ -133,10 +131,10 @@ def get_stopwords(docs):
         print tok, info[tok]
     print '[{}]'.format("', '".join(sorted_info[:80]))
         
-def tokenize_files(doc_dir, docs, lda_vocab):
+def tokenize_files(doc_dir, docs):
     doc_paths = walk_dir(doc_dir)
     for path in doc_paths:
         new_doc = Review(path)
-        new_doc.tokenize(lda_vocab)
+        new_doc.tokenize()
         docs.append(new_doc)
     #get_stopwords(docs)

@@ -106,11 +106,11 @@ if __name__ == '__main__':
     train_reviews = []
     test_reviews = []
     test_count = 50
-    tokenizer.tokenize_files('data/POS', train_reviews, set())
+    tokenizer.tokenize_files('data/POS', train_reviews)
     test_reviews = train_reviews[-test_count:]
     train_reviews = train_reviews[:-test_count]
     # NEG test dataset is sci.med
-    tokenizer.tokenize_files('data/NEG', train_reviews, set())
+    tokenizer.tokenize_files('data/NEG', train_reviews)
     test_reviews.extend(train_reviews[-test_count:])
     train_reviews = train_reviews[:-test_count]
     run_lda(train_reviews, test_reviews, K=10, train_iters=10)

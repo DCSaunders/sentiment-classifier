@@ -32,21 +32,38 @@ def get_args():
     parser.add_argument('-p', '--path', help='path to dir with POS and NEG review subdirs', default='data')
     parser.add_argument('-l', '--lexicon', help='path to sentiment lexicon', default='resources/sent_lexicon')
     parser.add_argument('-N', '--cv_folds', type=int, help='number of folds for N-fold cross-validation', default=10)
-    parser.add_argument('-K', '--topic_count', type=int, help='number of topics for LDA', default=5)
+    parser.add_argument('-K', '--topic_count', type=int, help='number of topics for LDA', default=10)
+    parser.add_argument('--no_single_doc_toks', default=False,
+                        action='store_true',
+        help='Set if removing any words that only appear in a single training review')
     args = parser.parse_args()
     return args
 
-def get_review_files(review_dir, reviews, vocab):
+def get_review_files(review_dir, reviews):
     # Get all review files and complete vocab counts
     for review_type in (POS, NEG):
         search_dir = os.path.join(review_dir, review_type)
-        tokenizer.tokenize_files(search_dir, reviews, vocab)
-    preprocess_reviews(reviews, vocab)
+        tokenizer.tokenize_files(search_dir, reviews)
         
-def preprocess_reviews(reviews, vocab):
-    common_vocab = collections.Counter(
-        {w: count for w, count in vocab.items() if count > 3})
-    for review in reviews:
+def preprocess_reviews(train_reviews, test_reviews,
+                       no_single_doc=False):
+    vocab = collections.Counter()
+    doc_occurrences = collections.defaultdict(int)
+    for review in train_reviews:
+        for w, count in review.bag_ngrams[1].items():
+            vocab[w] += count
+            doc_occurrences[w] += 1
+    common_vocab = set([w for w, count in vocab.items()
+                        if count > 1 # no rare words
+                        and w not in tokenizer.STOPWORDS # no stopwords
+                        and w.upper() != w]) # no film titles
+    if no_single_doc:
+        gt_one_doc = set([w for w, count in doc_occurrences.items()
+                          if count > 1])
+        common_vocab = common_vocab.intersection(gt_one_doc)
+
+    # Apply trained vocab to all reviews, train and test
+    for review in train_reviews + test_reviews:
         for seg in review.text:
             if seg in common_vocab:
                 review.text_no_stopwords.append(seg)
@@ -157,7 +174,7 @@ def test(tests, unigrams, bigrams, trigrams, results):
         naive_bayes(review, bigrams, results['bayes_bg'], ngram=2)
         naive_bayes(review, trigrams, results['bayes_tg'], ngram=3)
 
-def cross_validate(reviews, results, cv_folds, topic_count):
+def cross_validate(reviews, results, cv_folds, topic_count, no_single_doc=False):
     count = len(reviews) / 2 # assume equal number pos/neg reviews
     labels = ['n_bayes', 'bayes_smooth', 'bayes_smooth_stopwords', 'bayes_bg', 'bayes_tg', 'lda']
     fold_size = count / cv_folds
@@ -167,6 +184,7 @@ def cross_validate(reviews, results, cv_folds, topic_count):
         high = (fold + 1) * fold_size
         train_reviews, test_reviews = split_train_test(
             reviews, low, high)
+        preprocess_reviews(train_reviews, test_reviews, no_single_doc)
         run_lda(train_reviews, test_reviews, results['lda'],
                 topic_count)
         #unigrams, bigrams, trigrams = train(train_reviews, results)
@@ -200,10 +218,10 @@ def run_lda(train_reviews, test_reviews, results, topic_count):
     for r in test_reviews:
         neg_prob = pos_prob = 0.0
         for index, count in enumerate(r.topic_counts):
-            pos_prob += count * (log(pos_topics[index])
-                                - log(total_pos))
-            neg_prob += count * (log(neg_topics[index])
-                                - log(total_neg))
+            pos_prob += count * (log(pos_topics[index] + smooth)
+                                - log((1 + smooth) * total_pos))
+            neg_prob += count * (log(pos_topics[index] + smooth)
+                                - log((1 + smooth) * total_neg))
         if pos_prob == neg_prob:
             print 'Equal probabilities - choose class at random'
             pos_prob, neg_prob = np.random.rand(2)
@@ -238,7 +256,7 @@ if __name__ == '__main__':
     results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
                'bayes_smooth': {}, 'bayes_smooth_stopwords': {},
                'bayes_bg': {}, 'bayes_tg': {}, 'lda': {}}
-    vocab = collections.Counter()
-    get_review_files(args.path, reviews, vocab)
+    get_review_files(args.path, reviews)
     lexicon_test(reviews, unweight_lex, weight_lex, results)
-    cross_validate(reviews, results, args.cv_folds, args.topic_count)
+    cross_validate(reviews, results, args.cv_folds,
+                   args.topic_count, args.no_single_doc_toks)
