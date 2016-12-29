@@ -4,6 +4,7 @@ import argparse
 import collections
 import copy
 import cPickle
+import logging
 import numpy as np
 import os
 import re
@@ -126,10 +127,10 @@ def get_stopwords(docs):
                                / (pos_total + neg_total)))
     sorted_info = sorted(info, key=lambda x: info[x])
     for tok in sorted_info[:100]:
-        print tok, info[tok]
+        logging.info('{} {}'.format(tok, info[tok]))
     for tok in sorted_info[-100:]:
-        print tok, info[tok]
-    print '[{}]'.format("', '".join(sorted_info[:80]))
+        logging.info('{} {}'.format(tok, info[tok]))
+    logging.info('[{}]'.format("', '".join(sorted_info[:80])))
         
 def tokenize_files(doc_dir, docs):
     doc_paths = walk_dir(doc_dir)

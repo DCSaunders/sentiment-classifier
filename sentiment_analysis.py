@@ -5,6 +5,7 @@ import codecs
 import collections
 import copy
 import cPickle
+import logging
 import numpy as np
 import os
 import re
@@ -64,6 +65,7 @@ def preprocess_reviews(train_reviews, test_reviews,
 
     # Apply trained vocab to all reviews, train and test
     for review in train_reviews + test_reviews:
+        review.text_no_stopwords = []
         for seg in review.text:
             if seg in common_vocab:
                 review.text_no_stopwords.append(seg)
@@ -105,8 +107,8 @@ def sign_test(results, label_1, label_2):
         elif results[label_1][obs] < results[label_2][obs]:
             test2_count += 1
     significance = two_sided_binomial(round(test1_count), round(test2_count))
-    print "Comparing {} and {}: equal with probability {}".format(
-        label_1, label_2, significance)
+    logging.info("Comparing {} and {}: equal with probability {}".format(
+        label_1, label_2, significance))
 
 def two_sided_binomial(test1, test2):
     # normal approximation: binom(p) -> N(np, np^2)
@@ -197,14 +199,14 @@ def cross_validate(reviews, results, cv_folds, topic_count, no_single_doc=False)
         for label in labels:
             if results[label]:
                 accuracy = sum(results[label].values()) / len(results[label])
-                print label, accuracy
+                logging.info('{}: {}'.format(label, accuracy))
                 accuracies[label].append(accuracy)
                 results[label] = {}
-    print accuracies
+    logging.info(accuracies)
 
 def run_lda(train_reviews, test_reviews, results, topic_count):
     lda.run_lda(train_reviews, test_reviews, topic_count,
-                train_iters=30)
+                train_iters=20)
     pos_topics = np.zeros(topic_count)
     neg_topics = np.zeros(topic_count)
     for r in train_reviews:
@@ -223,7 +225,7 @@ def run_lda(train_reviews, test_reviews, results, topic_count):
             neg_prob += count * (log(neg_topics[index] + smooth)
                                 - log((1 + smooth) * total_neg))
         if pos_prob == neg_prob:
-            print 'Equal probabilities - choose class at random'
+            logging.info('Equal probabilities - choose class at random')
             pos_prob, neg_prob = np.random.rand(2)
         if (pos_prob - neg_prob) * r.rating > 0.0:
             results[r] = 1
@@ -234,10 +236,10 @@ def lexicon_test(reviews, unweight_lex, weight_lex, results):
     for review in reviews:
         results['uw_lex'][review] = review.lexicon_score(unweight_lex)
         results['w_lex'][review] = review.lexicon_score(weight_lex)
-    print 'uw_lex', (sum(results['uw_lex'].values())
-                     / len(results['uw_lex']))
-    print 'w_lex', (sum(results['w_lex'].values())
-                    / len(results['w_lex']))
+    logging.info('uw_lex {}'.format(sum(results['uw_lex'].values())
+                     / len(results['uw_lex'])))
+    logging.info('w_lex {}'.format(sum(results['w_lex'].values())
+                    / len(results['w_lex'])))
     sign_test(results, 'w_lex', 'uw_lex')
         
 def output_topics(topics, top_words):
@@ -246,10 +248,11 @@ def output_topics(topics, top_words):
         counts = np.array([topic.word_counts[w] for w in words])
         top = np.argpartition(counts, -top_words)[-top_words:]
         top = top[np.argsort(counts[top])]
-        print [words[ind] for ind in top]
+        logging.info([words[ind] for ind in top])
                 
 if __name__ == '__main__':
     np.random.seed(1234)
+    logging.basicConfig(level=logging.INFO)
     args = get_args()
     unweight_lex, weight_lex = get_sentiments(args.lexicon)
     reviews = []

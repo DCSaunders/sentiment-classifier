@@ -3,6 +3,7 @@ from __future__ import division
 from collections import defaultdict
 import numpy as np
 import tokenizer
+import logging
 
 class Topic(object):
     def __init__(self):
@@ -30,7 +31,7 @@ def train(docs, topics, train_iters, vocab_size,
           topic_word_assign, words_given_topics, alpha=0.1, gamma=0.1):
     K = len(topics)
     for i in range(0, train_iters):
-        print 'Iteration {}'.format(i)
+        logging.info('Iteration {}'.format(i))
         for doc in docs:
             for index, word in enumerate(doc.text_no_stopwords):
                 old_topic = doc.topic_words[index]    
@@ -69,7 +70,7 @@ def run_lda(train_docs, test_docs, K, train_iters=100):
     for review in train_docs:
         vocab = vocab.union(review.text_no_stopwords)
     vocab_size = len(vocab)
-    print 'LDA with vocab size {}'.format(vocab_size)
+    logging.info('LDA with vocab size {}, {} training iterations, {} topics'.format(vocab_size, train_iters, K))
     for t in range(0, K):
         topics.append(Topic())
         test_topics.append(Topic())
@@ -98,7 +99,7 @@ def run_lda(train_docs, test_docs, K, train_iters=100):
         top_topic_words = sorted(topic.word_counts,
                                  key=lambda x: topic.word_counts[x],
                                  reverse=True)[:top_words]
-        print index, ' '.join(top_topic_words)
+        logging.info('{}: {}'.format(index, ' '.join(top_topic_words)))
     
 if __name__ == '__main__':
     np.random.seed(1234)
@@ -106,11 +107,11 @@ if __name__ == '__main__':
     train_reviews = []
     test_reviews = []
     test_count = 50
-    tokenizer.tokenize_files('data/POS', train_reviews)
+    tokenizer.tokenize_files('tmp/POS', train_reviews)
     test_reviews = train_reviews[-test_count:]
     train_reviews = train_reviews[:-test_count]
     # NEG test dataset is sci.med
-    tokenizer.tokenize_files('data/NEG', train_reviews)
+    tokenizer.tokenize_files('tmp/NEG', train_reviews)
     test_reviews.extend(train_reviews[-test_count:])
     train_reviews = train_reviews[:-test_count]
     run_lda(train_reviews, test_reviews, K=10, train_iters=10)
