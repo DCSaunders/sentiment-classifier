@@ -54,7 +54,7 @@ def preprocess_reviews(train_reviews, test_reviews,
             vocab[w] += count
             doc_occurrences[w] += 1
     common_vocab = set([w for w, count in vocab.items()
-                        if count > 1 # no rare words
+                        if count > 2 # no rare words
                         and w not in tokenizer.STOPWORDS # no stopwords
                         and w.upper() != w]) # no film titles
     if no_single_doc:
@@ -204,7 +204,7 @@ def cross_validate(reviews, results, cv_folds, topic_count, no_single_doc=False)
 
 def run_lda(train_reviews, test_reviews, results, topic_count):
     lda.run_lda(train_reviews, test_reviews, topic_count,
-                train_iters=20)
+                train_iters=30)
     pos_topics = np.zeros(topic_count)
     neg_topics = np.zeros(topic_count)
     for r in train_reviews:
@@ -220,7 +220,7 @@ def run_lda(train_reviews, test_reviews, results, topic_count):
         for index, count in enumerate(r.topic_counts):
             pos_prob += count * (log(pos_topics[index] + smooth)
                                 - log((1 + smooth) * total_pos))
-            neg_prob += count * (log(pos_topics[index] + smooth)
+            neg_prob += count * (log(neg_topics[index] + smooth)
                                 - log((1 + smooth) * total_neg))
         if pos_prob == neg_prob:
             print 'Equal probabilities - choose class at random'
