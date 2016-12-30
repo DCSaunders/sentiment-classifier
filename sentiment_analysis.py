@@ -208,8 +208,8 @@ def cross_validate(reviews, results, cv_folds, topic_count, no_single_doc=False)
 def run_lda(train_reviews, test_reviews, results, topic_count):
     #lda.run_lda(train_reviews, test_reviews, topic_count,
     #            train_iters=20)
-    slda.run_slda(train_review, test_reviews, topic_count,
-                  train_iters=20)
+    slda.run_slda(train_reviews, test_reviews, topic_count,
+                  train_iters=10)
     '''
     pos_topics = np.zeros(topic_count)
     neg_topics = np.zeros(topic_count)
@@ -259,12 +259,12 @@ if __name__ == '__main__':
     np.random.seed(1234)
     logging.basicConfig(level=logging.INFO)
     args = get_args()
-    unweight_lex, weight_lex = get_sentiments(args.lexicon)
+    #unweight_lex, weight_lex = get_sentiments(args.lexicon)
     reviews = []
     results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
                'bayes_smooth': {}, 'bayes_smooth_stopwords': {},
                'bayes_bg': {}, 'bayes_tg': {}, 'lda': {}}
     get_review_files(args.path, reviews)
-    lexicon_test(reviews, unweight_lex, weight_lex, results)
+    #lexicon_test(reviews, unweight_lex, weight_lex, results)
     cross_validate(reviews, results, args.cv_folds,
                    args.topic_count, args.no_single_doc_toks)

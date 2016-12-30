@@ -26,30 +26,36 @@ def initialise(docs, topics, vocab, topic_word_assign, K):
         words_given_topics[w] = np.array([t.word_counts[w] for t in topics])
     return words_given_topics
 
+def rating_to_regr(rating, reverse=False):
+    if not reverse:
+        # regression targets are 0 and 1
+        return (rating + 1) / 2
+    else:
+        return (rating - 0.5) * 2
            
 def train(docs, topics, train_iters, vocab_size,
           topic_word_assign, words_given_topics, eta,
           alpha=0.1, gamma=0.1):
     K = len(topics)
-    # TODO initialise eta: 1*K, normally distributed
-    # define mu = eta*NDK (a scalar)
-    eta = np.random.randn(K)
+    sample_reg_every = 100
+    labels = np.array([rating_to_regr(doc.rating) for doc in docs])
     
     for i in range(0, train_iters):
         logging.info('Iteration {}'.format(i))
-        for doc in docs:
+        for doc_index, doc in enumerate(docs):
+            mu = sum(doc.topic_counts * eta)
             for index, word in enumerate(doc.text_no_stopwords):
                 old_topic = doc.topic_words[index]    
                 topics[old_topic].word_counts[word] -= 1
                 topic_word_assign[old_topic] -= 1
                 doc.topic_counts[old_topic] -= 1
                 words_given_topics[word][old_topic] -= 1
-                # adjust mu appropriately before/after
-                # calculate yprobs
-                # integrate yprobs into distribution
-                # discrete distribution over topics
+                mu -= eta[old_topic]
+                y = labels[doc_index]
+                y_diff = y - (mu + eta) / len(docs)
                 distrib = ((alpha + doc.topic_counts)
                            * (gamma + words_given_topics[word])
+                           * np.exp(-0.5 * np.square(y_diff))
                            / (vocab_size * gamma + topic_word_assign))
                 new_topic = sample_discrete(distrib)
                 doc.topic_words[index] = new_topic
@@ -57,7 +63,14 @@ def train(docs, topics, train_iters, vocab_size,
                 topics[new_topic].word_counts[word] += 1
                 topic_word_assign[new_topic] += 1
                 words_given_topics[word][new_topic] += 1
-        # resample eta. After every document? every iter? every WORD? 
+                mu += eta[new_topic]
+            if doc_index % sample_reg_every == 0:
+                # resample eta
+                topic_probs = np.array(
+                    [doc.topic_counts / sum(doc.topic_counts)] for doc in docs)
+                precision = topic_probs.T.dot(topic_probs) + np.ones((K, K))
+                eta_mu = np.linalg.lstsq(precision, topic_probs.T.dot(labels))
+                eta = 1 / np.sqrt(precision) * np.random.randn(K) + eta_mu
                 
 def sample_discrete(distribution):
     r = sum(distribution) * np.random.uniform()
@@ -71,25 +84,25 @@ def run_slda(train_docs, test_docs, K, train_iters=100):
     top_words = 10
     topics = []
     test_topics = []
-    alpha = 0.1 # dirichlet parameter over topics (per review)
+    alpha = 0.1 # dirichlet parameter over topics
     gamma = 0.1 # dirichlet parameter over words
-    lambd = 1
-    eta = 
-    
+    eta = np.random.randn(K) # regression coefficients for topics
+    test_samples = 10
     vocab = set()
     for review in train_docs:
         vocab = vocab.union(review.text_no_stopwords)
     vocab_size = len(vocab)
-    logging.info('LDA with vocab size {}, {} training iterations, {} topics'.format(vocab_size, train_iters, K))
+    logging.info(
+        'sLDA with vocab size {}, {} training iterations, {} topics'.format(
+            vocab_size, train_iters, K))
     for t in range(0, K):
         topics.append(Topic())
         test_topics.append(Topic())
     topic_word_assign = np.zeros(K)
-  
     words_given_topics = initialise(train_docs, topics, vocab,
                                     topic_word_assign, K)
-    train(train_docs, topics, train_iters,
-          vocab_size, topic_word_assign, words_given_topics)
+    train(train_docs, topics, train_iters, vocab_size, topic_word_assign,
+          words_given_topics, eta)
     test_topic_word_assign = np.zeros(K)
     initialise(test_docs, test_topics, vocab, test_topic_word_assign, K)
     
@@ -104,6 +117,11 @@ def run_slda(train_docs, test_docs, K, train_iters=100):
                 new_topic = sample_discrete(distrib)
                 doc.topic_words[index] = new_topic
                 doc.topic_counts[new_topic] += 1
+        topic_probs = doc.topic_counts / sum(doc.topic_counts)
+        y_mu = sum(topic_probs * eta)
+        samples = np.random.randn(test_samples) + y_mu
+        logging.info('true rating {}, samples {}'.format(
+            rating_to_regr(doc.rating), samples))
     for index, topic in enumerate(topics):
         top_topic_words = sorted(topic.word_counts,
                                  key=lambda x: topic.word_counts[x],
