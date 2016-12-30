@@ -67,10 +67,9 @@ def train(docs, topics, train_iters, vocab_size,
             if doc_index % sample_reg_every == 0:
                 # resample eta
                 topic_probs = np.array(
-                    [doc.topic_counts / sum(doc.topic_counts)] for doc in docs)
-                precision = topic_probs.T.dot(topic_probs) + np.ones((K, K))
-                eta_mu = np.linalg.lstsq(precision, topic_probs.T.dot(labels))
-                eta = 1 / np.sqrt(precision) * np.random.randn(K) + eta_mu
+                    [doc.topic_counts / sum(doc.topic_counts) for doc in docs])
+                precision = topic_probs.T.dot(topic_probs) + np.eye(K)
+                eta = np.linalg.lstsq(precision, topic_probs.T.dot(labels))
                 
 def sample_discrete(distribution):
     r = sum(distribution) * np.random.uniform()
@@ -120,8 +119,8 @@ def run_slda(train_docs, test_docs, K, train_iters=100):
         topic_probs = doc.topic_counts / sum(doc.topic_counts)
         y_mu = sum(topic_probs * eta)
         samples = np.random.randn(test_samples) + y_mu
-        logging.info('true rating {}, samples {}'.format(
-            rating_to_regr(doc.rating), samples))
+        logging.info('true rating {}, samples {}, y_mu {}'.format(
+            rating_to_regr(doc.rating), samples), y_mu)
     for index, topic in enumerate(topics):
         top_topic_words = sorted(topic.word_counts,
                                  key=lambda x: topic.word_counts[x],
