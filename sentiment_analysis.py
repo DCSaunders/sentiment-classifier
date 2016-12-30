@@ -15,6 +15,7 @@ from numpy import log
 from scipy.stats import norm
 import tokenizer
 import lda
+import slda
 reload(sys)
 sys.setdefaultencoding('utf-8')
 
@@ -205,8 +206,11 @@ def cross_validate(reviews, results, cv_folds, topic_count, no_single_doc=False)
     logging.info(accuracies)
 
 def run_lda(train_reviews, test_reviews, results, topic_count):
-    lda.run_lda(train_reviews, test_reviews, topic_count,
-                train_iters=20)
+    #lda.run_lda(train_reviews, test_reviews, topic_count,
+    #            train_iters=20)
+    slda.run_slda(train_review, test_reviews, topic_count,
+                  train_iters=20)
+    '''
     pos_topics = np.zeros(topic_count)
     neg_topics = np.zeros(topic_count)
     for r in train_reviews:
@@ -231,6 +235,7 @@ def run_lda(train_reviews, test_reviews, results, topic_count):
             results[r] = 1
         else:
             results[r] = 0
+    '''
         
 def lexicon_test(reviews, unweight_lex, weight_lex, results):
     for review in reviews:

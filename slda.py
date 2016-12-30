@@ -28,8 +28,13 @@ def initialise(docs, topics, vocab, topic_word_assign, K):
 
            
 def train(docs, topics, train_iters, vocab_size,
-          topic_word_assign, words_given_topics, alpha=0.1, gamma=0.1):
+          topic_word_assign, words_given_topics, eta,
+          alpha=0.1, gamma=0.1):
     K = len(topics)
+    # TODO initialise eta: 1*K, normally distributed
+    # define mu = eta*NDK (a scalar)
+    eta = np.random.randn(K)
+    
     for i in range(0, train_iters):
         logging.info('Iteration {}'.format(i))
         for doc in docs:
@@ -39,6 +44,9 @@ def train(docs, topics, train_iters, vocab_size,
                 topic_word_assign[old_topic] -= 1
                 doc.topic_counts[old_topic] -= 1
                 words_given_topics[word][old_topic] -= 1
+                # adjust mu appropriately before/after
+                # calculate yprobs
+                # integrate yprobs into distribution
                 # discrete distribution over topics
                 distrib = ((alpha + doc.topic_counts)
                            * (gamma + words_given_topics[word])
@@ -49,6 +57,7 @@ def train(docs, topics, train_iters, vocab_size,
                 topics[new_topic].word_counts[word] += 1
                 topic_word_assign[new_topic] += 1
                 words_given_topics[word][new_topic] += 1
+        # resample eta. After every document? every iter? every WORD? 
                 
 def sample_discrete(distribution):
     r = sum(distribution) * np.random.uniform()
@@ -58,12 +67,14 @@ def sample_discrete(distribution):
         if total >= r:
             return choice
 
-def run_lda(train_docs, test_docs, K, train_iters=100):
+def run_slda(train_docs, test_docs, K, train_iters=100):
     top_words = 10
     topics = []
     test_topics = []
     alpha = 0.1 # dirichlet parameter over topics (per review)
     gamma = 0.1 # dirichlet parameter over words
+    lambd = 1
+    eta = 
     
     vocab = set()
     for review in train_docs:
@@ -112,4 +123,4 @@ if __name__ == '__main__':
     tokenizer.tokenize_files('tmp/NEG', train_reviews)
     test_reviews.extend(train_reviews[-test_count:])
     train_reviews = train_reviews[:-test_count]
-    run_lda(train_reviews, test_reviews, K=10, train_iters=10)
+    run_slda(train_reviews, test_reviews, K=10, train_iters=10)
