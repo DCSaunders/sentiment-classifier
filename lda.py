@@ -10,7 +10,8 @@ class Topic(object):
         # Store counts of words given topic, across all documents
         self.word_counts = defaultdict(int)
         
-def initialise(docs, topics, vocab, topic_word_assign, K):
+def initialise(docs, topics, vocab, K):
+    topic_word_assign = np.zeros(K)
     for doc in docs:
         doc.topic_words = []
         doc.topic_counts = np.zeros(K)
@@ -24,11 +25,11 @@ def initialise(docs, topics, vocab, topic_word_assign, K):
     words_given_topics = defaultdict(int)
     for w in vocab:
         words_given_topics[w] = np.array([t.word_counts[w] for t in topics])
-    return words_given_topics
+    return words_given_topics, topic_word_assign
 
            
 def train(docs, topics, train_iters, vocab_size,
-          topic_word_assign, words_given_topics, alpha=0.1, gamma=0.1):
+          topic_word_assign, words_given_topics, alpha, gamma):
     K = len(topics)
     for i in range(0, train_iters):
         logging.info('Iteration {}'.format(i))
@@ -49,7 +50,8 @@ def train(docs, topics, train_iters, vocab_size,
                 topics[new_topic].word_counts[word] += 1
                 topic_word_assign[new_topic] += 1
                 words_given_topics[word][new_topic] += 1
-                
+    return topic_word_assign
+
 def sample_discrete(distribution):
     r = sum(distribution) * np.random.uniform()
     total = 0
@@ -58,29 +60,25 @@ def sample_discrete(distribution):
         if total >= r:
             return choice
 
-def run_lda(train_docs, test_docs, K, train_iters=100):
+def run_lda(train_docs, test_docs, K, train_iters=100, alpha=0.1, gamma=0.1):
     top_words = 10
     topics = []
     test_topics = []
-    alpha = 0.1 # dirichlet parameter over topics (per review)
-    gamma = 0.1 # dirichlet parameter over words
-    
     vocab = set()
     for review in train_docs:
         vocab = vocab.union(review.text_no_stopwords)
     vocab_size = len(vocab)
-    logging.info('LDA with vocab size {}, {} training iterations, {} topics'.format(vocab_size, train_iters, K))
+    logging.info('LDA with vocab size {}, {} training iterations, {} topics, alpha={}, gamma={}'.format(vocab_size, train_iters, K, alpha, gamma))
     for t in range(0, K):
         topics.append(Topic())
         test_topics.append(Topic())
-    topic_word_assign = np.zeros(K)
   
-    words_given_topics = initialise(train_docs, topics, vocab,
-                                    topic_word_assign, K)
-    train(train_docs, topics, train_iters,
-          vocab_size, topic_word_assign, words_given_topics)
-    test_topic_word_assign = np.zeros(K)
-    initialise(test_docs, test_topics, vocab, test_topic_word_assign, K)
+    words_given_topics, topic_word_assign = initialise(
+        train_docs, topics, vocab, K)
+    topic_word_assign = train(train_docs, topics, train_iters,
+                              vocab_size, topic_word_assign,
+                              words_given_topics, alpha, gamma)
+    initialise(test_docs, test_topics, vocab, K)
     
     for doc in test_docs:
         for i in range(0, train_iters):

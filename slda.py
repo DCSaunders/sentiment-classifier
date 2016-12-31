@@ -36,7 +36,7 @@ def rating_to_regr(rating, reverse=False):
            
 def train(docs, topics, train_iters, vocab_size,
           topic_word_assign, words_given_topics, eta,
-          alpha=0.1, gamma=0.1):
+          alpha, gamma):
     K = len(topics)
     sample_reg_every = 50
     labels = np.array([rating_to_regr(doc.rating) for doc in docs])
@@ -81,12 +81,10 @@ def sample_discrete(distribution):
         if total >= r:
             return choice
 
-def run_slda(train_docs, test_docs, K, train_iters=100):
+def run_slda(train_docs, test_docs, K, train_iters, alpha, gamma):
     top_words = 10
     topics = []
     test_topics = []
-    alpha = 0.1 # dirichlet parameter over topics
-    gamma = 0.1 # dirichlet parameter over words
     eta_scale = 5
     eta = eta_scale * np.random.randn(K) # regression coefficients for topics
     vocab = set()
@@ -94,7 +92,8 @@ def run_slda(train_docs, test_docs, K, train_iters=100):
         vocab = vocab.union(review.text_no_stopwords)
     vocab_size = len(vocab)
     logging.info(
-       'sLDA with vocab size {}, {} training iterations, {} topics, eta scale {}'.format(vocab_size, train_iters, K, eta_scale))
+        'sLDA with vocab size {}, {} training iterations, {} topics, eta scale {}, alpha {}, gamma {}'.format(
+        vocab_size, train_iters, K, eta_scale, alpha, gamma))
     for t in range(0, K):
         topics.append(Topic())
         test_topics.append(Topic())
@@ -102,7 +101,7 @@ def run_slda(train_docs, test_docs, K, train_iters=100):
         train_docs, topics, vocab, K)
     eta, topic_word_assign = train(
         train_docs, topics, train_iters, vocab_size, topic_word_assign,
-        words_given_topics, eta)
+        words_given_topics, eta, alpha, gamma)
     initialise(test_docs, test_topics, vocab, K)
     ymu_accuracies = np.zeros(len(test_docs))
     for doc_index, doc in enumerate(test_docs):
