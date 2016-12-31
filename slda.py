@@ -10,7 +10,8 @@ class Topic(object):
         # Store counts of words given topic, across all documents
         self.word_counts = defaultdict(int)
         
-def initialise(docs, topics, vocab, topic_word_assign, K):
+def initialise(docs, topics, vocab, K):
+    topic_word_assign = np.zeros(K)
     for doc in docs:
         doc.topic_words = []
         doc.topic_counts = np.zeros(K)
@@ -24,7 +25,7 @@ def initialise(docs, topics, vocab, topic_word_assign, K):
     words_given_topics = defaultdict(int)
     for w in vocab:
         words_given_topics[w] = np.array([t.word_counts[w] for t in topics])
-    return words_given_topics
+    return words_given_topics, topic_word_assign
 
 def rating_to_regr(rating, reverse=False):
     if not reverse:
@@ -37,25 +38,26 @@ def train(docs, topics, train_iters, vocab_size,
           topic_word_assign, words_given_topics, eta,
           alpha=0.1, gamma=0.1):
     K = len(topics)
-    sample_reg_every = 100
+    sample_reg_every = 50
     labels = np.array([rating_to_regr(doc.rating) for doc in docs])
     
     for i in range(0, train_iters):
         logging.info('Iteration {}'.format(i))
         for doc_index, doc in enumerate(docs):
-            mu = sum(doc.topic_counts * eta)
             for index, word in enumerate(doc.text_no_stopwords):
                 old_topic = doc.topic_words[index]    
                 topics[old_topic].word_counts[word] -= 1
                 topic_word_assign[old_topic] -= 1
                 doc.topic_counts[old_topic] -= 1
                 words_given_topics[word][old_topic] -= 1
-                mu -= eta[old_topic]
-                y = labels[doc_index]
-                y_diff = y - (mu + eta) / len(docs)
+            
+                z_bar = np.zeros([K, K]) + doc.topic_counts + np.identity(K)
+                z_bar = z_bar / z_bar.sum(1)
+                y_diff = labels[doc_index] - np.dot(z_bar, eta)
+
                 distrib = ((alpha + doc.topic_counts)
                            * (gamma + words_given_topics[word])
-                           * np.exp(-0.5 * np.square(y_diff))
+                           * np.exp(-0.5 * y_diff ** 2)
                            / (vocab_size * gamma + topic_word_assign))
                 new_topic = sample_discrete(distrib)
                 doc.topic_words[index] = new_topic
@@ -63,13 +65,13 @@ def train(docs, topics, train_iters, vocab_size,
                 topics[new_topic].word_counts[word] += 1
                 topic_word_assign[new_topic] += 1
                 words_given_topics[word][new_topic] += 1
-                mu += eta[new_topic]
             if doc_index % sample_reg_every == 0:
-                # resample eta
-                topic_probs = np.array(
-                    [doc.topic_counts / sum(doc.topic_counts) for doc in docs])
-                precision = topic_probs.T.dot(topic_probs) + np.eye(K)
-                eta = np.linalg.lstsq(precision, topic_probs.T.dot(labels))
+                # resample eta after topic burn-in
+                doc_topics = np.array([doc.topic_counts for doc in docs])
+                topic_probs = doc_topics / doc_topics.sum(1)[:, np.newaxis] 
+                eta = np.linalg.solve(np.dot(topic_probs.T, topic_probs),
+                                      np.dot(topic_probs.T, labels))
+    return eta, topic_word_assign
                 
 def sample_discrete(distribution):
     r = sum(distribution) * np.random.uniform()
@@ -85,27 +87,25 @@ def run_slda(train_docs, test_docs, K, train_iters=100):
     test_topics = []
     alpha = 0.1 # dirichlet parameter over topics
     gamma = 0.1 # dirichlet parameter over words
-    eta = np.random.randn(K) # regression coefficients for topics
-    test_samples = 10
+    eta_scale = 5
+    eta = eta_scale * np.random.randn(K) # regression coefficients for topics
     vocab = set()
     for review in train_docs:
         vocab = vocab.union(review.text_no_stopwords)
     vocab_size = len(vocab)
     logging.info(
-        'sLDA with vocab size {}, {} training iterations, {} topics'.format(
-            vocab_size, train_iters, K))
+       'sLDA with vocab size {}, {} training iterations, {} topics, eta scale {}'.format(vocab_size, train_iters, K, eta_scale))
     for t in range(0, K):
         topics.append(Topic())
         test_topics.append(Topic())
-    topic_word_assign = np.zeros(K)
-    words_given_topics = initialise(train_docs, topics, vocab,
-                                    topic_word_assign, K)
-    train(train_docs, topics, train_iters, vocab_size, topic_word_assign,
-          words_given_topics, eta)
-    test_topic_word_assign = np.zeros(K)
-    initialise(test_docs, test_topics, vocab, test_topic_word_assign, K)
-    
-    for doc in test_docs:
+    words_given_topics, topic_word_assign = initialise(
+        train_docs, topics, vocab, K)
+    eta, topic_word_assign = train(
+        train_docs, topics, train_iters, vocab_size, topic_word_assign,
+        words_given_topics, eta)
+    initialise(test_docs, test_topics, vocab, K)
+    ymu_accuracies = np.zeros(len(test_docs))
+    for doc_index, doc in enumerate(test_docs):
         for i in range(0, train_iters):
             for index, word in enumerate(doc.text_no_stopwords):
                 old_topic = doc.topic_words[index]
@@ -117,10 +117,11 @@ def run_slda(train_docs, test_docs, K, train_iters=100):
                 doc.topic_words[index] = new_topic
                 doc.topic_counts[new_topic] += 1
         topic_probs = doc.topic_counts / sum(doc.topic_counts)
-        y_mu = sum(topic_probs * eta)
-        samples = np.random.randn(test_samples) + y_mu
-        logging.info('true rating {}, samples {}, y_mu {}'.format(
-            rating_to_regr(doc.rating), samples), y_mu)
+        y_mu = np.dot(topic_probs, eta)
+        ymu_est = -1 if y_mu < 0.5 else 1
+        if ymu_est == doc.rating:
+            ymu_accuracies[doc_index] = 1
+    logging.info('Accuracy {}'.format(sum(ymu_accuracies) / len(test_docs)))
     for index, topic in enumerate(topics):
         top_topic_words = sorted(topic.word_counts,
                                  key=lambda x: topic.word_counts[x],

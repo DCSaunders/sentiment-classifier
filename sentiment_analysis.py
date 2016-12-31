@@ -209,7 +209,7 @@ def run_lda(train_reviews, test_reviews, results, topic_count):
     #lda.run_lda(train_reviews, test_reviews, topic_count,
     #            train_iters=20)
     slda.run_slda(train_reviews, test_reviews, topic_count,
-                  train_iters=10)
+                  train_iters=50)
     '''
     pos_topics = np.zeros(topic_count)
     neg_topics = np.zeros(topic_count)
