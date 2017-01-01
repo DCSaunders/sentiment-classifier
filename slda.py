@@ -103,9 +103,10 @@ def run_slda(train_docs, test_docs, K, train_iters, alpha, gamma):
     eta, topic_word_assign = train(
         train_docs, topics, train_iters, vocab_size, topic_word_assign,
         words_given_topics, eta, alpha, gamma)
+    logging.info('sLDA eta is {}'.format(eta))
     initialise(test_docs, test_topics, vocab, K)
-    ymu_accuracies = np.zeros(len(test_docs))
-    for doc_index, doc in enumerate(test_docs):
+    ymu_accuracies = {}
+    for doc in test_docs:
         for i in range(0, train_iters):
             for index, word in enumerate(doc.text_no_stopwords):
                 old_topic = doc.topic_words[index]
@@ -120,14 +121,17 @@ def run_slda(train_docs, test_docs, K, train_iters, alpha, gamma):
         y_mu = np.dot(topic_probs, eta)
         ymu_est = -1 if y_mu < 0.5 else 1
         if ymu_est == doc.rating:
-            ymu_accuracies[doc_index] = 1
-    logging.info('Accuracy {}'.format(sum(ymu_accuracies) / len(test_docs)))
+            ymu_accuracies[doc] = 1
+        else:
+            ymu_accuracies[doc] = 0
     for index, topic in enumerate(topics):
         top_topic_words = sorted(topic.word_counts,
                                  key=lambda x: topic.word_counts[x],
                                  reverse=True)[:top_words]
         logging.info('{}: {}'.format(index, ' '.join(top_topic_words)))
-    
+    return ymu_accuracies
+
+        
 if __name__ == '__main__':
     np.random.seed(1234)
     # POS test dataset is sci.space

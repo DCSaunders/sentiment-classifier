@@ -27,8 +27,7 @@ class Review(object):
         self.text = []
         self.text_no_stopwords = []
         self.bag_ngrams = {1: collections.defaultdict(int),
-                           2: collections.defaultdict(int),
-                           3: collections.defaultdict(int)}
+                           2: collections.defaultdict(int)}
         self.first_in_sentence = collections.defaultdict(int)
         self.stopwords = 0
         self.topic_words = []
@@ -68,9 +67,6 @@ class Review(object):
         bigrams = zip(self.text, self.text[1:])
         for token in bigrams:
             self.bag_ngrams[2][token] += 1
-        trigrams = zip(self.text, self.text[1:], self.text[2:])
-        for token in trigrams:
-            self.bag_ngrams[3][token] += 1
 
 def get_args():
     parser = argparse.ArgumentParser()
