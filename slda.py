@@ -38,7 +38,8 @@ def train(docs, topics, train_iters, vocab_size,
           topic_word_assign, words_given_topics, eta,
           alpha, gamma):
     K = len(topics)
-    sample_reg_every = 50
+    sample_reg_every = 100
+    logging.info('Sampling eta every {} docs'.format(sample_reg_every))
     labels = np.array([rating_to_regr(doc.rating) for doc in docs])
     
     for i in range(0, train_iters):
@@ -65,7 +66,7 @@ def train(docs, topics, train_iters, vocab_size,
                 topics[new_topic].word_counts[word] += 1
                 topic_word_assign[new_topic] += 1
                 words_given_topics[word][new_topic] += 1
-            if doc_index % sample_reg_every == 0:
+            if doc_index % sample_reg_every == 0 or doc_index == len(docs) - 1:
                 # resample eta after topic burn-in
                 doc_topics = np.array([doc.topic_counts for doc in docs])
                 topic_probs = doc_topics / doc_topics.sum(1)[:, np.newaxis] 
@@ -92,8 +93,8 @@ def run_slda(train_docs, test_docs, K, train_iters, alpha, gamma):
         vocab = vocab.union(review.text_no_stopwords)
     vocab_size = len(vocab)
     logging.info(
-        'sLDA with vocab size {}, {} training iterations, {} topics, eta scale {}, alpha {}, gamma {}'.format(
-        vocab_size, train_iters, K, eta_scale, alpha, gamma))
+        'sLDA with vocab size {}, {} training iterations, {} topics, eta linspace init, alpha {}, gamma {}, eta scale {}'.format(
+        vocab_size, train_iters, K, alpha, gamma, eta_scale))
     for t in range(0, K):
         topics.append(Topic())
         test_topics.append(Topic())
