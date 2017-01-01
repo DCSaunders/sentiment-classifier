@@ -233,6 +233,8 @@ def cross_validate(reviews, results, args):
         sign_test(results, 'bayes_smooth', 'lda')
         sign_test(results, 'bayes_smooth', 'slda')
         sign_test(results, 'slda', 'lda')
+        sign_test(results, 'slda', 'comb')
+        sign_test(results, 'bayes_smooth', 'comb')
         for label in labels:
             if results[label]:
                 accuracy = sum(results[label].values()) / len(results[label])
