@@ -133,7 +133,7 @@ def two_sided_binomial(test1, test2):
     return approx
        
 def naive_bayes(review, freqs, results, inc_stopwords=True, smooth=1.0,
-                ngram=1):
+                ngram=1, probs=None):
     # Assume equal class priors: P(neg) = P(pos) = 0.5
     neg_prob = pos_prob = 0.0
     total_pos = sum(freqs.pos.values())
@@ -149,6 +149,8 @@ def naive_bayes(review, freqs, results, inc_stopwords=True, smooth=1.0,
                                 - log((1 + smooth) * total_neg))
     if pos_prob == neg_prob:
             pos_prob, neg_prob = np.random.rand(2)
+    if probs is not None:
+        probs[review] = pos_prob / (pos_prob + neg_prob)
     if (pos_prob - neg_prob) * review.rating > 0.0:
         results[review] = 1
     else:
@@ -179,17 +181,31 @@ def split_train_test(reviews, low, high):
     return train, test
 
 def test(tests, unigrams, bigrams, results):
+    nb_probs = {}
     for review in tests:
         naive_bayes(review, unigrams, results['n_bayes'], smooth=0.0)
-        naive_bayes(review, unigrams, results['bayes_smooth'])
+        naive_bayes(review, unigrams, results['bayes_smooth'], probs=nb_probs)
         naive_bayes(review, unigrams, results['bayes_smooth_stopwords'],
                     inc_stopwords=False)
         naive_bayes(review, bigrams, results['bayes_bg'], ngram=2)
+
+def simple_system_comb(slda_probs, nb_probs, results):
+    for r in slda_probs:
+        pos_prob = slda_probs[r] + nb_probs[r]
+        neg_prob = 2.0 - pos_prob
+        if pos_prob == neg_prob:
+            logging.info(
+                'Equal probabilities - choose class at random')
+            pos_prob, neg_prob = np.random.rand(2)
+        if (pos_prob - neg_prob) * r.rating > 0.0:
+            results[r] = 1
+        else:
+            results[r] = 0
         
 def cross_validate(reviews, results, args):
     count = len(reviews) / 2 # assume equal number pos/neg reviews
     labels = ['n_bayes', 'bayes_smooth', 'bayes_smooth_stopwords',
-              'bayes_bg', 'lda', 'slda']
+              'bayes_bg', 'lda', 'slda', 'comb']
     fold_size = count / args.cv_folds
     accuracies = collections.defaultdict(list)
     for fold in range(args.cv_folds):
@@ -202,11 +218,12 @@ def cross_validate(reviews, results, args):
         run_lda(train_reviews, test_reviews, results['lda'],
                 args.topic_count, args.train_iters, args.alpha,
                 args.gamma)
-        run_slda(train_reviews, test_reviews,
+        slda_probs = run_slda(train_reviews, test_reviews,
             results['slda'],  args.topic_count, args.train_iters,
             args.alpha, args.gamma)
         unigrams, bigrams = train(train_reviews, results)
-        test(test_reviews, unigrams, bigrams, results)
+        nb_probs = test(test_reviews, unigrams, bigrams, results)
+        simple_system_comb(slda_probs, nb_probs, results['comb'])
         #sign_test(results, 'n_bayes', 'w_lex')
         #sign_test(results, 'bayes_smooth', 'uw_lex')
         #sign_test(results, 'bayes_smooth', 'w_lex')
@@ -225,7 +242,7 @@ def cross_validate(reviews, results, args):
     logging.info(accuracies)
 
 def run_slda(train_reviews, test_reviews, results, topic_count, train_iters, alpha, gamma):
-    slda_results = slda.run_slda(train_reviews,
+    slda_results, slda_probs = slda.run_slda(train_reviews,
         test_reviews, topic_count, train_iters, alpha, gamma)
     results = slda_results
     pos_topics = np.zeros(topic_count)
@@ -238,7 +255,8 @@ def run_slda(train_reviews, test_reviews, results, topic_count, train_iters, alp
     logging.info('sLDA pos topics: {}\n sLDA neg topics: {}'.format(
         pos_topics / np.sum(pos_topics),
         neg_topics / np.sum(neg_topics)))
-        
+    return slda_probs
+    
 def run_lda(train_reviews, test_reviews, results, topic_count, train_iters, alpha, gamma):
     lda.run_lda(train_reviews, test_reviews, topic_count,
                 train_iters, alpha, gamma)
@@ -297,7 +315,7 @@ if __name__ == '__main__':
     reviews = []
     results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
                'bayes_smooth': {}, 'bayes_smooth_stopwords': {},
-               'bayes_bg': {}, 'lda': {}, 'slda': {}}
+               'bayes_bg': {}, 'lda': {}, 'slda': {}, 'comb': {}}
     get_review_files(args.path, reviews)
     #lexicon_test(reviews, unweight_lex, weight_lex, results)
     cross_validate(reviews, results, args)

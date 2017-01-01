@@ -4,6 +4,7 @@ from collections import defaultdict
 import numpy as np
 import tokenizer
 import logging
+from scipy.stats import norm
 
 class Topic(object):
     def __init__(self):
@@ -106,6 +107,7 @@ def run_slda(train_docs, test_docs, K, train_iters, alpha, gamma):
     logging.info('sLDA eta is {}'.format(eta))
     initialise(test_docs, test_topics, vocab, K)
     ymu_accuracies = {}
+    ymu_probs = {}
     for doc in test_docs:
         for i in range(0, train_iters):
             for index, word in enumerate(doc.text_no_stopwords):
@@ -120,6 +122,7 @@ def run_slda(train_docs, test_docs, K, train_iters, alpha, gamma):
         topic_probs = doc.topic_counts / sum(doc.topic_counts)
         y_mu = np.dot(topic_probs, eta)
         ymu_est = -1 if y_mu < 0.5 else 1
+        ymu_probs[doc] = norm.cdf(y_mu - 0.5)
         if ymu_est == doc.rating:
             ymu_accuracies[doc] = 1
         else:
@@ -129,7 +132,7 @@ def run_slda(train_docs, test_docs, K, train_iters, alpha, gamma):
                                  key=lambda x: topic.word_counts[x],
                                  reverse=True)[:top_words]
         logging.info('{}: {}'.format(index, ' '.join(top_topic_words)))
-    return ymu_accuracies
+    return ymu_accuracies, ymu_probs
 
         
 if __name__ == '__main__':
