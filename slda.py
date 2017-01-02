@@ -87,15 +87,14 @@ def run_slda(train_docs, test_docs, K, train_iters, alpha, gamma):
     top_words = 10
     topics = []
     test_topics = []
-    eta_scale = 5
-    eta = eta_scale * np.random.randn(K) # regression coefficients for topics
+    eta = np.linspace(-1, 1, K) # regression coefficients for topics
     vocab = set()
     for review in train_docs:
         vocab = vocab.union(review.text_no_stopwords)
     vocab_size = len(vocab)
     logging.info(
-        'sLDA with vocab size {}, {} training iterations, {} topics, eta linspace init, alpha {}, gamma {}, eta scale {}'.format(
-        vocab_size, train_iters, K, alpha, gamma, eta_scale))
+        'sLDA with vocab size {}, {} training iterations, {} topics, eta linspace init, alpha {}, gamma {}'.format(
+        vocab_size, train_iters, K, alpha, gamma))
     for t in range(0, K):
         topics.append(Topic())
         test_topics.append(Topic())
@@ -107,7 +106,6 @@ def run_slda(train_docs, test_docs, K, train_iters, alpha, gamma):
     logging.info('sLDA eta is {}'.format(eta))
     initialise(test_docs, test_topics, vocab, K)
     ymu_accuracies = {}
-    ymu_probs = {}
     for doc in test_docs:
         for i in range(0, train_iters):
             for index, word in enumerate(doc.text_no_stopwords):
@@ -122,7 +120,6 @@ def run_slda(train_docs, test_docs, K, train_iters, alpha, gamma):
         topic_probs = doc.topic_counts / sum(doc.topic_counts)
         y_mu = np.dot(topic_probs, eta)
         ymu_est = -1 if y_mu < 0.5 else 1
-        ymu_probs[doc] = norm.cdf(y_mu - 0.5)
         if ymu_est == doc.rating:
             ymu_accuracies[doc] = 1
         else:
@@ -132,7 +129,7 @@ def run_slda(train_docs, test_docs, K, train_iters, alpha, gamma):
                                  key=lambda x: topic.word_counts[x],
                                  reverse=True)[:top_words]
         logging.info('{}: {}'.format(index, ' '.join(top_topic_words)))
-    return ymu_accuracies, ymu_probs
+    return ymu_accuracies
 
         
 if __name__ == '__main__':
