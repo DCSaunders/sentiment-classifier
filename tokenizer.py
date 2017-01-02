@@ -28,7 +28,6 @@ class Review(object):
         self.text_no_stopwords = []
         self.bag_ngrams = {1: collections.defaultdict(int),
                            2: collections.defaultdict(int)}
-        self.first_in_sentence = collections.defaultdict(int)
         self.stopwords = 0
         self.topic_words = []
         self.topic_counts = []
@@ -52,11 +51,8 @@ class Review(object):
             for line in f:
                 for index, word in enumerate(line.split()):
                     split_word = space_punctuation(word)
-                    if (index == 0):
-                        self.first_in_sentence[split_word[0]] += 1
                     for seg in split_word:
-                        if seg.upper() != seg:
-                            seg = seg.lower()
+                        seg = seg.lower()
                         self.bag_ngrams[1][seg] += 1
                         self.text.append(seg)
                         if seg in STOPWORDS:

@@ -68,9 +68,8 @@ def preprocess_reviews(train_reviews, test_reviews,
             vocab[w] += count
             doc_occurrences[w] += 1
     common_vocab = set([w for w, count in vocab.items()
-                        if count > 2 # no rare words
-                        and w not in tokenizer.STOPWORDS # no stopwords
-                        and w.upper() != w]) # no film titles
+                    if count > 2 # no rare words
+                    and w not in tokenizer.STOPWORDS]) # no stopwords
     if no_single_doc:
         gt_one_doc = set([w for w, count in doc_occurrences.items()
                           if count > 1])
