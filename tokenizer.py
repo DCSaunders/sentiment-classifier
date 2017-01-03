@@ -13,7 +13,7 @@ import sys
 from numpy import log
 from scipy.stats import norm
 
-STOPWORDS = set([',', 'the', '.', 'a', 'and', 'of', 'to', 'is', 'in', "'s", '"', "'", '`', ';', '--', 'that', 'it', 'as', 'his', ')', '(', 'with', 'he', 'for', 'film', 'this', 'but', 'I', 'on', 'an', 'are', 'by', 'who', 'not', 'has', 'be', 'from', "n't", 'you', 'at', 'one', 'was', 'have', 'movie', 'all', 'they', 'which', 'like', 'him', 'do', 'more', 'about', 'so', 'there', 'her', 'when', 'we', 'out', 'up', 'does', 'she', 'their', 'its'])
+STOPWORDS = set([',', 'the', '.', 'a', 'and', 'of', 'to', 'is', 'in', "'s", '"', "'", '`', ';', '--', 'that', 'it', 'as', 'his', ')', '(', 'with', 'he', 'for', 'film', 'this', 'but', 'i', 'on', 'an', 'are', 'by', 'who', 'not', 'has', 'be', 'from', "n't", 'you', 'at', 'one', 'was', 'have', 'movie', 'all', 'they', 'which', 'him', 'do', 'more', 'about', 'there', 'her', 'when', 'we', 'out', 'does', 'she', 'their', 'its'])
 
 GENERIC_PUNC = re.compile(r"(\w*-?\w*)(--|\.\.\.|[,!?%`./();$&@#:\"'])(\w*-?\w*)") 
 
@@ -28,7 +28,6 @@ class Review(object):
         self.text_no_stopwords = []
         self.bag_ngrams = {1: collections.defaultdict(int),
                            2: collections.defaultdict(int)}
-        self.stopwords = 0
         self.topic_words = []
         self.topic_counts = []
         
@@ -55,8 +54,6 @@ class Review(object):
                         seg = seg.lower()
                         self.bag_ngrams[1][seg] += 1
                         self.text.append(seg)
-                        if seg in STOPWORDS:
-                            self.stopwords += 1
         self.get_ngrams()
         
     def get_ngrams(self):
@@ -84,6 +81,9 @@ def space_punctuation(word):
     return matches
 
 def adjust_apostrophe(match_tuple):
+    if (match_tuple[-3] and match_tuple[-3][-1] == 's'
+        and match_tuple[-2] == "'" and match_tuple[-1] == ''):
+        return tuple(match_tuple[0:-2], "'s")
     if match_tuple[2] == 't':
         return tuple([match_tuple[0][:-1], "n't"])
     else:
@@ -97,18 +97,15 @@ def walk_dir(path_to_dir):
     return path_list
 
 def get_stopwords(docs):
-    stopwords = []
     pos_toks = collections.defaultdict(int)
     neg_toks = collections.defaultdict(int)
     info = collections.defaultdict(float)
     for doc in docs:
-        num = int(os.path.basename(doc.path)[2:5])
-        if num < 100:
-            for tok in doc.bag_ngrams[1]:
-                if POS in doc.path:
-                    pos_toks[tok] += doc.bag_ngrams[1][tok]
-                else:
-                    neg_toks[tok] += doc.bag_ngrams[1][tok]
+        for tok in doc.bag_ngrams[1]:
+            if POS in doc.path:
+                pos_toks[tok] += doc.bag_ngrams[1][tok]
+            else:
+                neg_toks[tok] += doc.bag_ngrams[1][tok]
     pos_total = sum(pos_toks.values())
     neg_total = sum(pos_toks.values())
     vocab = set(pos_toks.keys()).union(set(neg_toks.keys()))
@@ -118,11 +115,7 @@ def get_stopwords(docs):
                      - 2 * log((pos_toks[tok] + neg_toks[tok])
                                / (pos_total + neg_total)))
     sorted_info = sorted(info, key=lambda x: info[x])
-    for tok in sorted_info[:100]:
-        logging.info('{} {}'.format(tok, info[tok]))
-    for tok in sorted_info[-100:]:
-        logging.info('{} {}'.format(tok, info[tok]))
-    logging.info('[{}]'.format("', '".join(sorted_info[:80])))
+    return sorted_info[:60]
         
 def tokenize_files(doc_dir, docs):
     doc_paths = walk_dir(doc_dir)
@@ -130,4 +123,3 @@ def tokenize_files(doc_dir, docs):
         new_doc = Review(path)
         new_doc.tokenize()
         docs.append(new_doc)
-    #get_stopwords(docs)
