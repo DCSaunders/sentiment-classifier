@@ -13,9 +13,9 @@ import sys
 from numpy import log
 from scipy.stats import norm
 
-STOPWORDS = set([',', 'the', '.', 'a', 'and', 'of', 'to', 'is', 'in', "'s", '"', "'", '`', ';', '--', 'that', 'it', 'as', 'his', ')', '(', 'with', 'he', 'for', 'film', 'this', 'but', 'i', 'on', 'an', 'are', 'by', 'who', 'not', 'has', 'be', 'from', "n't", 'you', 'at', 'one', 'was', 'have', 'movie', 'all', 'they', 'which', 'him', 'do', 'more', 'about', 'there', 'her', 'when', 'we', 'out', 'does', 'she', 'their', 'its'])
+STOPWORDS = set([',', 'the', '.', 'a', 'and', 'of', 'to', 'is', 'in', "'s", '"', 'it', 'that', ')', '(', 'as', 'with', 'for', 'his', 'this', 'film', 'i', 'he', 'but', 'are', 'on', 'by', "n't", 'be', 'movie', 'an', 'who', 'one', 'not', 'was', 'you', 'have', 'at', 'from', 'they', 'has', 'her', 'all', 'there', 'we', 'out', 'him', 'about', 'more', 'what', 'when', 'their', 'which', 'she', 'or', 'its', ':', 'do', 'some', '--'])
 
-GENERIC_PUNC = re.compile(r"(\w*-?\w*)(--|\.\.\.|[,!?%`./();$&@#:\"'])(\w*-?\w*)") 
+GENERIC_PUNC = re.compile(r"([\"_]?)(\w*-?\w*)(--|\.\.\.|[+*=_,!?%`.<>{}\[\]/();$&@#:\"'])(\w*-?\w*)") 
 
 POS = 'POS'
 NEG = 'NEG'
@@ -72,7 +72,7 @@ def space_punctuation(word):
     m = re.findall(GENERIC_PUNC, word)
     for match in m:
         if "'" in match:
-            match = adjust_apostrophe(match)
+            match = adjust_apostrophe(match, match.index("'"))
         for seg in match:
             if seg:
                 matches.append(seg)
@@ -80,14 +80,14 @@ def space_punctuation(word):
         matches = [word]
     return matches
 
-def adjust_apostrophe(match_tuple):
-    if (match_tuple[-3] and match_tuple[-3][-1] == 's'
+def adjust_apostrophe(match_tuple, index):
+    if (match_tuple[index - 1] and match_tuple[index - 1][-1] == 's'
         and match_tuple[-2] == "'" and match_tuple[-1] == ''):
-        return tuple(match_tuple[0:-2], "'s")
-    if match_tuple[2] == 't':
-        return tuple([match_tuple[0][:-1], "n't"])
-    else:
-        return tuple([match_tuple[0], "'{}".format(match_tuple[2])])
+        return tuple([match_tuple[index - 1], "'s"])
+    elif match_tuple[index + 1] and match_tuple[index + 1] == 't':
+        return tuple([match_tuple[0], match_tuple[index - 1][:-1], "n't"])
+    elif len(match_tuple) > index + 1:
+        return tuple([match_tuple[index - 1], "'{}".format(match_tuple[index + 1])])
 
 def walk_dir(path_to_dir):
     path_list = []
