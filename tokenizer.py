@@ -16,6 +16,7 @@ from scipy.stats import norm
 STOPWORDS = set([',', 'the', '.', 'a', 'and', 'of', 'to', 'is', 'in', "'s", '"', 'it', 'that', ')', '(', 'as', 'with', 'for', 'his', 'this', 'film', 'i', 'he', 'but', 'are', 'on', 'by', "n't", 'be', 'movie', 'an', 'who', 'one', 'not', 'was', 'you', 'have', 'at', 'from', 'they', 'has', 'her', 'all', 'there', 'we', 'out', 'him', 'about', 'more', 'what', 'when', 'their', 'which', 'she', 'or', 'its', ':', 'do', 'some', '--'])
 
 GENERIC_PUNC = re.compile(r"([\"_]?)(\w*-?\w*)(--|\.\.\.|[+*=_,!?%`.<>{}\[\]/();$&@#:\"'])(\w*-?\w*)") 
+PUNC = set([p for p in string.punctuation])
 
 POS = 'POS'
 NEG = 'NEG'
@@ -48,12 +49,13 @@ class Review(object):
     def tokenize(self):
         with open(self.path, 'r') as f:
             for line in f:
-                for index, word in enumerate(line.split()):
+                for word in line.split():
                     split_word = space_punctuation(word)
                     for seg in split_word:
-                        seg = seg.lower()
-                        self.bag_ngrams[1][seg] += 1
-                        self.text.append(seg)
+                        if seg:
+                            seg = seg.lower()
+                            self.bag_ngrams[1][seg] += 1
+                            self.text.append(seg)
         self.get_ngrams()
         
     def get_ngrams(self):
@@ -68,26 +70,70 @@ def get_args():
     return args
 
 def space_punctuation(word):
-    matches = []
-    m = re.findall(GENERIC_PUNC, word)
-    for match in m:
-        if "'" in match:
-            match = adjust_apostrophe(match, match.index("'"))
-        for seg in match:
-            if seg:
-                matches.append(seg)
-    if not matches:
-        matches = [word]
-    return matches
-
-def adjust_apostrophe(match_tuple, index):
-    if (match_tuple[index - 1] and match_tuple[index - 1][-1] == 's'
-        and match_tuple[-2] == "'" and match_tuple[-1] == ''):
-        return tuple([match_tuple[index - 1], "'s"])
-    elif match_tuple[index + 1] and match_tuple[index + 1] == 't':
-        return tuple([match_tuple[0], match_tuple[index - 1][:-1], "n't"])
-    elif len(match_tuple) > index + 1:
-        return tuple([match_tuple[index - 1], "'{}".format(match_tuple[index + 1])])
+    out = []
+    s = ''
+    idx = 0
+    while idx < len(word):
+        last = (idx == len(word) - 1)
+        l = word[idx]
+        if l in PUNC:
+            if s and l != '-':
+                out.append(s)
+                s = ''
+            if l == "'":
+                idx = adjust_apostrophe(out, word, idx, last)
+            elif not last:
+                if ((idx < len(word) - 2)
+                    and l == '.'
+                    and l == word[idx + 1]
+                    and l == word[idx + 2]):
+                    out.append('...')
+                    idx += 3
+                elif (l == '-' and l == word[idx + 1]):
+                    out.append(s)
+                    s = ''
+                    out.append('--')
+                    idx += 2
+                elif l == '-':
+                    s += '-'
+                    idx += 1
+                else:
+                    out.append(l)
+                    idx += 1
+            else:
+                out.append(l)
+                idx += 1
+        else:
+            s += l
+            idx += 1
+    out.append(''.join(s))
+    return out
+            
+def adjust_apostrophe(out, word, idx, last):
+    last_seg = None
+    if out:
+        last_seg = out[-1]
+    if last:
+        if last_seg and last_seg[-1] == 's':
+            out.append("'s")
+        else:
+            out.append("'")
+        return idx + 1
+    elif last_seg and last_seg[-1] == 'n' and word[idx + 1] == 't':
+        out[-1] = last_seg[:-1]
+        out.append("n't")
+        return idx + 2
+    else:
+        new_seg = ["'"]
+        idx += 1
+        while idx < len(word):
+            if word[idx] not in PUNC:
+                new_seg.append(word[idx])
+                idx += 1
+            else:
+                break
+        out.append(''.join(new_seg))
+        return idx
 
 def walk_dir(path_to_dir):
     path_list = []

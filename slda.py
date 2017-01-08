@@ -28,20 +28,13 @@ def initialise(docs, topics, vocab, K):
         words_given_topics[w] = np.array([t.word_counts[w] for t in topics])
     return words_given_topics, topic_word_assign
 
-def rating_to_regr(rating, reverse=False):
-    if not reverse:
-        # regression targets are 0 and 1
-        return (rating + 1) / 2
-    else:
-        return (rating - 0.5) * 2
-           
 def train(docs, topics, train_iters, vocab_size,
           topic_word_assign, words_given_topics, eta,
           alpha, gamma):
     K = len(topics)
     sample_reg_every = 100
     logging.info('Sampling eta every {} docs'.format(sample_reg_every))
-    labels = np.array([rating_to_regr(doc.rating) for doc in docs])
+    labels = np.array([doc.rating for doc in docs])
     
     for i in range(0, train_iters):
         logging.info('Iteration {}'.format(i))
@@ -105,7 +98,7 @@ def run_slda(train_docs, test_docs, K, train_iters, alpha, gamma):
         words_given_topics, eta, alpha, gamma)
     logging.info('sLDA eta is {}'.format(eta))
     initialise(test_docs, test_topics, vocab, K)
-    ymu_accuracies = {}
+    ymu_predicts = {}
     for doc in test_docs:
         for i in range(0, train_iters):
             for index, word in enumerate(doc.text_no_stopwords):
@@ -119,17 +112,14 @@ def run_slda(train_docs, test_docs, K, train_iters, alpha, gamma):
                 doc.topic_counts[new_topic] += 1
         topic_probs = doc.topic_counts / sum(doc.topic_counts)
         y_mu = np.dot(topic_probs, eta)
-        ymu_est = -1 if y_mu < 0.5 else 1
-        if ymu_est == doc.rating:
-            ymu_accuracies[doc] = 1
-        else:
-            ymu_accuracies[doc] = 0
+        ymu_est = -1 if y_mu < 0 else 1
+        ymu_predicts[doc] = ymu_est
     for index, topic in enumerate(topics):
         top_topic_words = sorted(topic.word_counts,
                                  key=lambda x: topic.word_counts[x],
                                  reverse=True)[:top_words]
         logging.info('{}: {}'.format(index, ' '.join(top_topic_words)))
-    return ymu_accuracies
+    return ymu_predicts
 
         
 if __name__ == '__main__':
