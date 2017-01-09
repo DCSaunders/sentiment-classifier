@@ -37,6 +37,8 @@ def get_args():
         help='number of folds for N-fold cross-validation')
     parser.add_argument('-K', '--topic_count', type=int,
         help='number of topics for LDA', default=10)
+    parser.add_argument('--sw_count', type=int,
+        help='number of stopwords', default=60)
     parser.add_argument('--no_single_doc_toks', default=False,
         action='store_true',
         help='Set if removing tokens only in one training doc')
@@ -63,11 +65,11 @@ def get_review_files(review_dir, reviews):
         tokenizer.tokenize_files(search_dir, reviews)
         
 def preprocess_reviews(train_reviews, test_reviews, no_single_doc=False,
-                       get_mi_stopwords=False, nb_no_rare=False):
+                       get_mi_stopwords=False, nb_no_rare=False, sw_count=60):
     vocab = collections.Counter()
     doc_occurrences = collections.defaultdict(int)
     if get_mi_stopwords:
-        stopwords = tokenizer.get_stopwords(train_reviews)
+        stopwords = tokenizer.get_stopwords(train_reviews, sw_count)
         logging.info('Stopwords: {}'.format(stopwords))
     else:
         stopwords = tokenizer.STOPWORDS
@@ -204,21 +206,20 @@ def cross_validate(reviews, results, args):
     labels = ['n_bayes', 'bayes_smooth', 'bayes_bg', 'lda', 'slda']
     fold_size = count / args.cv_folds
     accuracies = collections.defaultdict(list)
-    all_results = {l: [] for l in labels}
+    all_results = {l: {} for l in labels}
     for fold in range(args.cv_folds):
         low = fold * fold_size
         high = (fold + 1) * fold_size
         train_reviews, test_reviews = split_train_test(reviews, low, high)
         preprocess_reviews(train_reviews, test_reviews, args.no_single_doc_toks,
-                           args.get_mi_stopwords, args.nb_no_rare)
-        '''
+                           args.get_mi_stopwords, args.nb_no_rare, args.sw_count)
         run_lda(train_reviews, test_reviews, results['lda'],
                 args.topic_count, args.train_iters, args.alpha,
                 args.gamma)
         run_slda(train_reviews, test_reviews,
             results['slda'],  args.topic_count, args.train_iters,
             args.alpha, args.gamma)
-        '''
+ 
         unigrams, bigrams = train(train_reviews, results, args.nb_no_rare)
         test(test_reviews, unigrams, bigrams, results, args.nb_no_rare)
         #sign_test(results, 'n_bayes', 'w_lex')
@@ -234,11 +235,16 @@ def cross_validate(reviews, results, args):
                 accuracy = sum(results[label].values()) / len(results[label])
                 logging.info('{}: {}'.format(label, accuracy))
                 accuracies[label].append(accuracy)
-                all_results[label].append(results[label])
+                for r, result in results[label].items():
+                    all_results[label][r] = result
                 results[label] = {}
     with open(args.out, 'wb') as f:
         # Dump results for sign test comparison across runs
         cPickle.dump({'accuracies': accuracies, 'results': all_results}, f) 
+    sign_test(all_results, 'bayes_smooth', 'bayes_bg')
+    sign_test(all_results, 'bayes_smooth', 'lda')
+    sign_test(all_results, 'bayes_smooth', 'slda')
+    sign_test(all_results, 'slda', 'lda')
     logging.info(accuracies)
 
 def run_slda(train_reviews, test_reviews, results, topic_count, train_iters, alpha, gamma):

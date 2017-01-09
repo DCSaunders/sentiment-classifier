@@ -143,7 +143,7 @@ def walk_dir(path_to_dir):
             path_list.append(os.path.join(dirpath, filename))
     return path_list
 
-def get_stopwords(docs):
+def get_stopwords(docs, count):
     pos_toks = collections.defaultdict(int)
     neg_toks = collections.defaultdict(int)
     info = collections.defaultdict(float)
@@ -162,7 +162,7 @@ def get_stopwords(docs):
                      - 2 * log((pos_toks[tok] + neg_toks[tok])
                                / (pos_total + neg_total)))
     sorted_info = sorted(info, key=lambda x: info[x])
-    return sorted_info[:60]
+    return sorted_info[:count]
         
 def tokenize_files(doc_dir, docs):
     doc_paths = walk_dir(doc_dir)
