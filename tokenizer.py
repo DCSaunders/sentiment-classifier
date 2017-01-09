@@ -27,6 +27,7 @@ class Review(object):
         self.rating = 1 if POS in path else -1
         self.text = []
         self.text_no_stopwords = []
+        self.no_rare_toks = collections.defaultdict(int)
         self.bag_ngrams = {1: collections.defaultdict(int),
                            2: collections.defaultdict(int)}
         self.topic_words = []
