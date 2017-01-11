@@ -35,10 +35,14 @@ def get_args():
         default='resources/sent_lexicon')
     parser.add_argument('-N', '--cv_folds', type=int, default=10,
         help='number of folds for N-fold cross-validation')
-    parser.add_argument('-K', '--topic_count', type=int,
+    parser.add_argument('-u', '--lda_k', type=int,
         help='number of topics for LDA', default=10)
+    parser.add_argument('-s', '--slda_k', type=int,
+        help='number of topics for sLDA', default=10)
     parser.add_argument('--sw_count', type=int,
         help='number of stopwords', default=60)
+    parser.add_argument('--rare_cutoff', type=int,
+        help='minimum times a word has to appear to be included', default=3)
     parser.add_argument('--no_single_doc_toks', default=False,
         action='store_true',
         help='Set if removing tokens only in one training doc')
@@ -50,7 +54,7 @@ def get_args():
     parser.add_argument('-t', '--train_iters', type=int,
         help='training iterations for (s)LDA', default=20)
     parser.add_argument('-a', '--alpha', type=float,
-        help='alpha for (s)LDA', default=0.1)
+                        help='alpha for (s)LDA', default=0.0)
     parser.add_argument('-g', '--gamma', type=float,
         help='gamma for (s)LDA', default=0.1)
     parser.add_argument('-o', '--out',
@@ -65,7 +69,8 @@ def get_review_files(review_dir, reviews):
         tokenizer.tokenize_files(search_dir, reviews)
         
 def preprocess_reviews(train_reviews, test_reviews, no_single_doc=False,
-                       get_mi_stopwords=False, nb_no_rare=False, sw_count=60):
+                       get_mi_stopwords=False, nb_no_rare=False, sw_count=60,
+                       rare_cutoff=3):
     vocab = collections.Counter()
     doc_occurrences = collections.defaultdict(int)
     if get_mi_stopwords:
@@ -78,7 +83,8 @@ def preprocess_reviews(train_reviews, test_reviews, no_single_doc=False,
             vocab[w] += count
             doc_occurrences[w] += 1
     logging.info('Total features in training vocab: {}'.format(len(vocab)))
-    no_rare_vocab  = set([w for w, count in vocab.items() if count > 2])
+    no_rare_vocab  = set([w for w, count in vocab.items()
+                          if count >= rare_cutoff])
     common_vocab = set([w for w in no_rare_vocab if w not in stopwords])
     logging.info('Total features excluding rare vocab: {}'.format(
         len(no_rare_vocab)))
@@ -212,12 +218,13 @@ def cross_validate(reviews, results, args):
         high = (fold + 1) * fold_size
         train_reviews, test_reviews = split_train_test(reviews, low, high)
         preprocess_reviews(train_reviews, test_reviews, args.no_single_doc_toks,
-                           args.get_mi_stopwords, args.nb_no_rare, args.sw_count)
+                           args.get_mi_stopwords, args.nb_no_rare,
+                           args.sw_count, args.rare_cutoff)
         run_lda(train_reviews, test_reviews, results['lda'],
-                args.topic_count, args.train_iters, args.alpha,
+                args.lda_k, args.train_iters, args.alpha,
                 args.gamma)
         run_slda(train_reviews, test_reviews,
-            results['slda'],  args.topic_count, args.train_iters,
+            results['slda'],  args.slda_k, args.train_iters,
             args.alpha, args.gamma)
  
         unigrams, bigrams = train(train_reviews, results, args.nb_no_rare)
@@ -248,6 +255,8 @@ def cross_validate(reviews, results, args):
     logging.info(accuracies)
 
 def run_slda(train_reviews, test_reviews, results, topic_count, train_iters, alpha, gamma):
+    if alpha == 0.0:
+        alpha = 1 / topic_count
     slda_predicts = slda.run_slda(train_reviews,
         test_reviews, topic_count, train_iters, alpha, gamma)
     pos_topics = np.zeros(topic_count)
@@ -259,11 +268,14 @@ def run_slda(train_reviews, test_reviews, results, topic_count, train_iters, alp
             neg_topics += r.topic_counts
     for r, predict in slda_predicts.items():
         results[r] = 1 if r.rating == predict else 0
-    logging.info('sLDA pos topics: {}\n sLDA neg topics: {}'.format(
-        pos_topics / np.sum(pos_topics),
-        neg_topics / np.sum(neg_topics)))
+    pos_posterior = pos_topics / (pos_topics + neg_topics)
+    topics_posterior = [(idx, post) for idx, post in enumerate(pos_posterior)]
+    logging.info('sLDA pos topics: {} \n'.format(sorted(topics_posterior,
+                                                       key=lambda x: x[1])))
     
 def run_lda(train_reviews, test_reviews, results, topic_count, train_iters, alpha, gamma):
+    if alpha == 0.0:
+        alpha = 1 / topic_count
     lda.run_lda(train_reviews, test_reviews, topic_count,
                 train_iters, alpha, gamma)
     pos_topics = np.zeros(topic_count)
@@ -276,9 +288,10 @@ def run_lda(train_reviews, test_reviews, results, topic_count, train_iters, alph
     total_pos = np.sum(pos_topics)
     total_neg = np.sum(neg_topics)
     smooth = 1
-    logging.info('LDA pos topics: {} \n LDA neg topics: {}'.format(
-        pos_topics / np.sum(pos_topics),
-        neg_topics / np.sum(neg_topics)))
+    pos_posterior = pos_topics / (pos_topics + neg_topics)
+    topics_posterior = [(idx, post) for idx, post in enumerate(pos_posterior)]
+    logging.info('LDA pos topics: {} \n'.format(sorted(topics_posterior,
+                                                       key=lambda x: x[1])))
     for r in test_reviews:
         neg_prob = pos_prob = 0.0
         for index, count in enumerate(r.topic_counts):

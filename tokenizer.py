@@ -13,9 +13,8 @@ import sys
 from numpy import log
 from scipy.stats import norm
 
-STOPWORDS = set([',', 'the', '.', 'a', 'and', 'of', 'to', 'is', 'in', "'s", '"', 'it', 'that', ')', '(', 'as', 'with', 'for', 'his', 'this', 'film', 'i', 'he', 'but', 'are', 'on', 'by', "n't", 'be', 'movie', 'an', 'who', 'one', 'not', 'was', 'you', 'have', 'at', 'from', 'they', 'has', 'her', 'all', 'there', 'we', 'out', 'him', 'about', 'more', 'what', 'when', 'their', 'which', 'she', 'or', 'its', ':', 'do', 'some', '--'])
+STOPWORDS = set([',', 'the', '.', 'a', 'and', 'of', 'to', 'is', 'in', "'s", '"', 'it', 'that', ')', '(', 'as', 'with', 'for', 'his', 'this', 'film', 'i', 'he', 'but', 'are', 'on', 'by', "n't", 'be', 'movie', 'an', 'who', 'one', 'not', 'was', 'you', 'have', 'at', 'from', 'they', 'has', 'her', ':', 'there', 'we', 'out', 'him', ';', 'more', 'what', 'when', 'their', 'which', 'she', 'or', 'its', ':', 'do', '_', '--'])
 
-GENERIC_PUNC = re.compile(r"([\"_]?)(\w*-?\w*)(--|\.\.\.|[+*=_,!?%`.<>{}\[\]/();$&@#:\"'])(\w*-?\w*)") 
 PUNC = set([p for p in string.punctuation])
 
 POS = 'POS'
