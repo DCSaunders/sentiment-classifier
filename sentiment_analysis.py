@@ -93,6 +93,7 @@ def preprocess_reviews(train_reviews, test_reviews, no_single_doc=False,
         gt_one_doc = set([w for w, count in doc_occurrences.items()
                           if count > 1])
         common_vocab = common_vocab.intersection(gt_one_doc)
+        logging.info('Total features excluding single doc toks: {}'.format(len(common_vocab)))
 
     # Apply trained vocab to all reviews, train and test
     for review in train_reviews + test_reviews:
@@ -209,7 +210,7 @@ def test(tests, unigrams, bigrams, results, no_rare_toks=False):
 
 def cross_validate(reviews, results, args):
     count = len(reviews) / 2 # assume equal number pos/neg reviews
-    labels = ['n_bayes', 'bayes_smooth', 'bayes_bg', 'lda', 'slda']
+    labels = results.keys()
     fold_size = count / args.cv_folds
     accuracies = collections.defaultdict(list)
     all_results = {l: {} for l in labels}
@@ -220,12 +221,14 @@ def cross_validate(reviews, results, args):
         preprocess_reviews(train_reviews, test_reviews, args.no_single_doc_toks,
                            args.get_mi_stopwords, args.nb_no_rare,
                            args.sw_count, args.rare_cutoff)
-        run_lda(train_reviews, test_reviews, results['lda'],
-                args.lda_k, args.train_iters, args.alpha,
-                args.gamma)
-        run_slda(train_reviews, test_reviews,
-            results['slda'],  args.slda_k, args.train_iters,
-            args.alpha, args.gamma)
+        if args.lda_k > 0:
+            run_lda(train_reviews, test_reviews, results['lda'],
+                    args.lda_k, args.train_iters, args.alpha,
+                    args.gamma)
+        if args.slda_k > 0:
+            run_slda(train_reviews, test_reviews,
+                     results['slda'], results['slda_nb'],  args.slda_k, 
+                     args.train_iters, args.alpha, args.gamma)
  
         unigrams, bigrams = train(train_reviews, results, args.nb_no_rare)
         test(test_reviews, unigrams, bigrams, results, args.nb_no_rare)
@@ -254,7 +257,7 @@ def cross_validate(reviews, results, args):
     sign_test(all_results, 'slda', 'lda')
     logging.info(accuracies)
 
-def run_slda(train_reviews, test_reviews, results, topic_count, train_iters, alpha, gamma):
+def run_slda(train_reviews, test_reviews, results, nb_results, topic_count, train_iters, alpha, gamma):
     if alpha == 0.0:
         alpha = 1 / topic_count
     slda_predicts = slda.run_slda(train_reviews,
@@ -272,6 +275,25 @@ def run_slda(train_reviews, test_reviews, results, topic_count, train_iters, alp
     topics_posterior = [(idx, post) for idx, post in enumerate(pos_posterior)]
     logging.info('sLDA pos topics: {} \n'.format(sorted(topics_posterior,
                                                        key=lambda x: x[1])))
+    nb_topics(test_reviews, nb_results, pos_topics, neg_topics)
+    
+
+def nb_topics(test_reviews, results, pos_topics, neg_topics):
+    total_pos = np.sum(pos_topics)
+    total_neg = np.sum(neg_topics)
+    smooth = 1
+    for r in test_reviews:
+        neg_prob = pos_prob = 0.0
+        for index, count in enumerate(r.topic_counts):
+            pos_prob += count * (log(pos_topics[index] + smooth)
+                                - log((1 + smooth) * total_pos))
+            neg_prob += count * (log(neg_topics[index] + smooth)
+                                - log((1 + smooth) * total_neg))
+        if pos_prob == neg_prob:
+            logging.info('Equal probabilities - choose class at random')
+            pos_prob, neg_prob = np.random.rand(2)
+        est = 1 if (pos_prob - neg_prob) > 0.0 else -1
+        results[r] = 1 if est == r.rating else 0
     
 def run_lda(train_reviews, test_reviews, results, topic_count, train_iters, alpha, gamma):
     if alpha == 0.0:
@@ -285,26 +307,11 @@ def run_lda(train_reviews, test_reviews, results, topic_count, train_iters, alph
             pos_topics += r.topic_counts
         else:
             neg_topics += r.topic_counts
-    total_pos = np.sum(pos_topics)
-    total_neg = np.sum(neg_topics)
-    smooth = 1
     pos_posterior = pos_topics / (pos_topics + neg_topics)
     topics_posterior = [(idx, post) for idx, post in enumerate(pos_posterior)]
     logging.info('LDA pos topics: {} \n'.format(sorted(topics_posterior,
                                                        key=lambda x: x[1])))
-    for r in test_reviews:
-        neg_prob = pos_prob = 0.0
-        for index, count in enumerate(r.topic_counts):
-            pos_prob += count * (log(pos_topics[index] + smooth)
-                                - log((1 + smooth) * total_pos))
-            neg_prob += count * (log(neg_topics[index] + smooth)
-                                - log((1 + smooth) * total_neg))
-        if pos_prob == neg_prob:
-            logging.info(
-                'Equal probabilities - choose class at random')
-            pos_prob, neg_prob = np.random.rand(2)
-        est = 1 if (pos_prob - neg_prob) > 0.0 else -1
-        results[r] = 1 if est == r.rating else 0
+    nb_topics(test_reviews, results, pos_topics, neg_topics)
 
 def lexicon_test(reviews, unweight_lex, weight_lex, results):
     for review in reviews:
@@ -331,7 +338,8 @@ if __name__ == '__main__':
     #unweight_lex, weight_lex = get_sentiments(args.lexicon)
     reviews = []
     results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
-               'bayes_smooth': {}, 'bayes_bg': {}, 'lda': {}, 'slda': {}}
+               'bayes_smooth': {}, 'bayes_bg': {}, 'lda': {},
+               'slda': {}, 'slda_nb': {}}
     get_review_files(args.path, reviews)
     #lexicon_test(reviews, unweight_lex, weight_lex, results)
     cross_validate(reviews, results, args)
