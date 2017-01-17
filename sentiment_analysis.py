@@ -54,7 +54,7 @@ def get_args():
     parser.add_argument('-t', '--train_iters', type=int,
         help='training iterations for (s)LDA', default=20)
     parser.add_argument('-a', '--alpha', type=float,
-                        help='alpha for (s)LDA', default=0.0)
+                        help='alpha for (s)LDA', default=0.1)
     parser.add_argument('-g', '--gamma', type=float,
         help='gamma for (s)LDA', default=0.1)
     parser.add_argument('-o', '--out',
@@ -148,7 +148,7 @@ def sign_test(results, label_1, label_2):
         label_1, label_2, significance))
 
 def two_sided_binomial(test1, test2):
-    # normal approximation: binom(p) -> N(np, np^2)
+    # normal approximation: binom(p) -> N(np, np^2) for p=0.5
     mean = (test1 + test2) * 0.5
     std = np.sqrt(mean * 0.5)
     corrected_point = min(test1, test2) + 0.5 # Continuity correction
@@ -236,7 +236,7 @@ def cross_validate(reviews, results, args):
         #sign_test(results, 'bayes_smooth', 'uw_lex')
         #sign_test(results, 'bayes_smooth', 'w_lex')
         #sign_test(results, 'bayes_smooth', 'n_bayes')
-        sign_test(results, 'bayes_smooth', 'bayes_bg')
+        #sign_test(results, 'bayes_smooth', 'bayes_bg')
         sign_test(results, 'bayes_smooth', 'lda')
         sign_test(results, 'bayes_smooth', 'slda')
         sign_test(results, 'slda', 'lda')
@@ -335,11 +335,11 @@ if __name__ == '__main__':
     np.random.seed(1234)
     logging.basicConfig(level=logging.INFO)
     args = get_args()
-    #unweight_lex, weight_lex = get_sentiments(args.lexicon)
+    unweight_lex, weight_lex = get_sentiments(args.lexicon)
     reviews = []
     results = {'w_lex': {}, 'uw_lex': {}, 'n_bayes': {},
                'bayes_smooth': {}, 'bayes_bg': {}, 'lda': {},
                'slda': {}, 'slda_nb': {}}
     get_review_files(args.path, reviews)
-    #lexicon_test(reviews, unweight_lex, weight_lex, results)
+    lexicon_test(reviews, unweight_lex, weight_lex, results)
     cross_validate(reviews, results, args)
